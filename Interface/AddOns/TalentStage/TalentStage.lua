@@ -71,6 +71,11 @@ TS.queueDone = 0        -- points settled so far in the current confirm run
 TS.sandboxMode = false
 TS.sandboxConfirmed = {} -- sandboxConfirmed[tab][idx] = fake-confirmed rank count
 TS.CONFIRM_FLASH_DURATION = 0.5
+TS.TIER_FLASH_DURATION = 0.6
+TS.tierUnlockState = {} -- tierUnlockState[tab][tier] = last known IsTierUnlocked
+                        -- result, so Refresh can detect a locked<->unlocked
+                        -- transition and flash the whole row once, instead of
+                        -- the color just snapping between grey and lit.
 
 --------------------------------------------------------------------------
 -- Frame lifecycle
@@ -416,7 +421,7 @@ function TalentStage_BuildLedger()
 	TalentStage_ApplyPlainBackdrop(bar, 0.7)
 
 	local text = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	text:SetPoint("LEFT", bar, "LEFT", 12, 0)
+	text:SetPoint("LEFT", bar, "LEFT", 16, 0)
 	TS.ledgerText = text
 
 	local confirmBtn = CreateFrame("Button", "TalentStageConfirmButton", bar, "UIPanelButtonTemplate")
@@ -534,9 +539,30 @@ function TalentStage_GetEffectiveSpent(tab)
 	return pointsSpent + stagedTotal + sandboxTotal
 end
 
+-- Points spent strictly in tiers below `tier` -- NOT TalentStage_GetEffectiveSpent,
+-- which sums the whole tab including the tier being checked (and beyond). A
+-- point already sitting in this tier must never count toward unlocking this
+-- same tier: in the real game that can't happen (rows can only be filled
+-- top-down, so by the time a row has a point, the threshold below it is
+-- already independently met), but this addon's stage/unstage lets the player
+-- unstage an earlier row out of order, and total-based counting let that
+-- row's own already-staged point prop up its own unlock check -- one point
+-- short of the real threshold below it still read as "unlocked".
+function TalentStage_GetEffectiveSpentBelowTier(tab, tier)
+	local panel = TS.panels[tab]
+	if not panel then return 0 end
+	local total = 0
+	for idx, d in pairs(panel.info) do
+		if d.tier < tier then
+			total = total + TalentStage_EffectiveRank(tab, idx, d.rank)
+		end
+	end
+	return total
+end
+
 function TalentStage_IsTierUnlocked(tab, tier)
 	if tier <= 1 then return true end
-	return (tier - 1) * 5 <= TalentStage_GetEffectiveSpent(tab)
+	return (tier - 1) * 5 <= TalentStage_GetEffectiveSpentBelowTier(tab, tier)
 end
 
 -- GetTalentPrereqs returns a flat vararg of (tier, column, isLearnable)
@@ -643,6 +669,33 @@ function TalentStage_Refresh()
 			panel.pointsText:SetTextColor(0.8, 0.8, 0.8)
 		end
 
+		local pointsLeft = TalentStage_GetAvailablePoints() - TalentStage_GetTotalStaged()
+
+		-- Detect a row's lock state flipping since the last refresh and flash
+		-- every button in that row once: gold on unlock, red on re-lock (it
+		-- still ends up grey either way once the flash decays -- the static
+		-- lit/grey color below is unaffected by this, it's a one-shot overlay
+		-- on top). Skipped on this tab's very first refresh (prev == nil) so
+		-- opening the panel doesn't flash every already-unlocked row.
+		if not TS.tierUnlockState[tab] then TS.tierUnlockState[tab] = {} end
+		local tierState = TS.tierUnlockState[tab]
+		for tier, row in pairs(panel.nodes) do
+			local unlocked = TalentStage_IsTierUnlocked(tab, tier)
+			local prev = tierState[tier]
+			if prev ~= nil and prev ~= unlocked then
+				local r, g, b
+				if unlocked then r, g, b = 1, 0.85, 0.1 else r, g, b = 0.9, 0.15, 0.15 end
+				for _, rowIdx in pairs(row) do
+					local rowBtn = panel.buttons[rowIdx]
+					if rowBtn then
+						rowBtn.tierFlashElapsed = 0
+						rowBtn.tierFlashColor = { r, g, b }
+					end
+				end
+			end
+			tierState[tier] = unlocked
+		end
+
 		for idx, btn in pairs(panel.buttons) do
 			local realName, icon, tier, column, rank, maxRank = GetTalentInfo(tab, idx)
 			local d = panel.info[idx]
@@ -653,9 +706,16 @@ function TalentStage_Refresh()
 
 			local tierUnlocked = TalentStage_IsTierUnlocked(tab, tier)
 			local prereqsMet = TalentStage_PrereqsMet(tab, idx)
-			local usable = tierUnlocked and prereqsMet and effRank < maxRank
+			-- lit up (full color) only if it's actually learnable right now:
+			-- unlocked/prereqs met, and either already has a real invested
+			-- rank or there's an unspent point available to put into it.
+			-- Otherwise -- e.g. tier-1 talents in every tree when the player
+			-- has 0 unspent points -- it should read as grey, not falsely
+			-- inviting a click that Stage() would just reject.
+			local lit = tierUnlocked and prereqsMet and (effRank > 0 or pointsLeft > 0)
+			local usable = lit and effRank < maxRank
 
-			if tierUnlocked and prereqsMet then
+			if lit then
 				btn.icon:SetVertexColor(1, 1, 1)
 			else
 				btn.icon:SetVertexColor(0.4, 0.4, 0.4)
@@ -891,6 +951,36 @@ function TalentStage_TalentButton_OnUpdate()
 		return
 	end
 
+	-- Row unlock/lock flash: a plain color-and-alpha fade on the same glow
+	-- texture the staged pulse and confirm flash use, no swirl (this marks a
+	-- row's availability changing, not a point landing). Confirm flash takes
+	-- priority above (it means a point just locked in, which matters more),
+	-- so a tier flash queued mid-confirm-flash just waits, frozen at 0, and
+	-- plays in full once the confirm flash's own cleanup returns here.
+	if this.tierFlashElapsed then
+		this.tierFlashElapsed = this.tierFlashElapsed + arg1
+		local t = this.tierFlashElapsed / TS.TIER_FLASH_DURATION
+		if t >= 1 then
+			this.tierFlashElapsed = nil
+			this.tierFlashColor = nil
+			this.glow:SetAlpha(this.stagedGlow and 0.35 or 0)
+			this.glow:SetVertexColor(1, 1, 1)
+			this.glow:ClearAllPoints()
+			this.glow:SetPoint("TOPLEFT", this, "TOPLEFT", -4, 4)
+			this.glow:SetPoint("BOTTOMRIGHT", this, "BOTTOMRIGHT", 4, -4)
+		else
+			local c = this.tierFlashColor
+			this.glow:SetVertexColor(c[1], c[2], c[3])
+			this.glow:SetAlpha(1 - t)
+
+			local bloom = 4 + (this:GetWidth() * 0.15 * (1 - t))
+			this.glow:ClearAllPoints()
+			this.glow:SetPoint("TOPLEFT", this, "TOPLEFT", -bloom, bloom)
+			this.glow:SetPoint("BOTTOMRIGHT", this, "BOTTOMRIGHT", bloom, -bloom)
+		end
+		return
+	end
+
 	if this.stagedGlow then
 		this.glowPhase = (this.glowPhase or 0) + arg1
 		local a = 0.35 + 0.35 * math.abs(math.sin(this.glowPhase * 3))
@@ -920,6 +1010,28 @@ function TalentStage_Stage(tab, idx)
 	TalentStage_Refresh()
 end
 
+-- True if any currently-staged point in this tab would fail its tier-unlock
+-- or prereq check right now. Used by Unstage to simulate-then-check a
+-- removal *before* committing it, rather than removing and cleaning up the
+-- wreckage after -- mirrors how real talent calculators (e.g. octowow.st)
+-- behave: a point already spent deeper in the tree pins the row(s) below it,
+-- refusing the removal outright, instead of silently discarding the deeper
+-- point once its support is pulled out from under it.
+function TalentStage_StagedWouldBeInvalid(tab)
+	local panel = TS.panels[tab]
+	local list = TS.staged[tab]
+	if not panel or not list then return false end
+	for idx, n in pairs(list) do
+		if n > 0 then
+			local d = panel.info[idx]
+			if not TalentStage_IsTierUnlocked(tab, d.tier) or not TalentStage_PrereqsMet(tab, idx) then
+				return true
+			end
+		end
+	end
+	return false
+end
+
 function TalentStage_Unstage(tab, idx)
 	if TS.processing then return end
 
@@ -927,6 +1039,14 @@ function TalentStage_Unstage(tab, idx)
 	if staged <= 0 then return end
 
 	TS.staged[tab][idx] = staged - 1
+	if TalentStage_StagedWouldBeInvalid(tab) then
+		-- would strand a deeper staged point below its own unlock/prereq
+		-- requirement -- undo and refuse the removal instead
+		TS.staged[tab][idx] = staged
+		PlaySound("igQuestFailed")
+		return
+	end
+
 	PlaySound("igMainMenuOptionCheckBoxOff")
 	TalentStage_Refresh()
 end
