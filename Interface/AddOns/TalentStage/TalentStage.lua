@@ -538,6 +538,16 @@ function TalentStage_BuildLedger()
 	text:SetTextColor(TS.COLOR.parchment[1], TS.COLOR.parchment[2], TS.COLOR.parchment[3])
 	TS.ledgerText = text
 
+	-- Progress label sits on its own line above the track (reference's
+	-- .progress-label), not centered on top of a full-height fill -- kept
+	-- separate from `text` above since the two states (staged/unspent vs.
+	-- applying-N-of-M) never show at the same time but use different anchors.
+	local progressLabel = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	progressLabel:SetPoint("TOPLEFT", bar, "TOPLEFT", 16, -10)
+	progressLabel:SetTextColor(TS.COLOR.goldBright[1], TS.COLOR.goldBright[2], TS.COLOR.goldBright[3])
+	progressLabel:Hide()
+	TS.progressLabel = progressLabel
+
 	local confirmBtn = CreateFrame("Button", "TalentStageConfirmButton", bar, "UIPanelButtonTemplate")
 	confirmBtn:SetWidth(90)
 	confirmBtn:SetHeight(22)
@@ -554,34 +564,54 @@ function TalentStage_BuildLedger()
 	clearBtn:SetScript("OnClick", TalentStage_ClearStaged)
 	TS.clearButton = clearBtn
 
-	-- fills the whole ledger bar (the same box that holds the staged/unspent
-	-- text and the Clear/Confirm buttons) while a confirm queue is draining;
-	-- Clear/Confirm are hidden for that span (they're inert anyway,
-	-- TS.processing blocks their handlers) so the entire box reads as one
-	-- active progress bar instead of text plus two dead buttons.
-	--
-	-- Plain texture regions owned directly by `bar`, not a separate child
-	-- frame: a child frame always draws above its parent's own regions
-	-- regardless of creation order, which would bury ledgerText (owned by
-	-- `bar`) under the fill. Regions on the same frame instead layer by their
-	-- draw-layer (BACKGROUND < BORDER < ARTWORK < OVERLAY), so keeping the
-	-- fill at BORDER and the text at OVERLAY keeps the text on top reliably.
-	local progressBg = bar:CreateTexture(nil, "BACKGROUND")
-	progressBg:SetPoint("TOPLEFT", bar, "TOPLEFT", 2, -2)
-	progressBg:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", -2, 2)
-	progressBg:SetTexture(TS.COLOR.lockedBg[1], TS.COLOR.lockedBg[2], TS.COLOR.lockedBg[3], 0.9)
-	progressBg:Hide()
-	TS.progressBg = progressBg
+	-- Thin track (reference's .progress-track: 8px tall, inset dark bg, thin
+	-- border) sitting below progressLabel, not a full-height fill behind the
+	-- text -- that was the earlier bug (spilled past the frame's own bottom
+	-- border because the fill was as tall as the whole footer). Clear/Confirm
+	-- are hidden while this shows (they're inert anyway, TS.processing blocks
+	-- their handlers), so the label+track pair fits in the same box those
+	-- buttons normally occupy, well within the footer's existing bounds.
+	-- No SetBackdrop here: TS.PANEL_BACKDROP's edgeSize (16) and insets (4)
+	-- are sized for normal-height panels, and on an 8px track the corner/edge
+	-- art overlaps itself at each end and reads as a solid vertical strip.
+	-- Built instead from plain WHITE8X8 textures (background + 1px border),
+	-- same technique the connector lines already use -- no template sized for
+	-- full-height frames involved.
+	local track = CreateFrame("Frame", nil, bar)
+	track:SetPoint("TOPLEFT", bar, "TOPLEFT", 16, -28)
+	track:SetPoint("RIGHT", bar, "RIGHT", -16, 0)
+	track:SetHeight(8)
+	track:Hide()
+	TS.progressBg = track
 
-	local progressFill = bar:CreateTexture(nil, "BORDER")
-	progressFill:SetPoint("TOPLEFT", bar, "TOPLEFT", 2, -2)
-	progressFill:SetHeight(TS.LEDGER_HEIGHT - TS.MARGIN - 4)
-	progressFill:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
+	local trackBg = track:CreateTexture(nil, "BACKGROUND")
+	trackBg:SetAllPoints(track)
+	trackBg:SetTexture("Interface\\Buttons\\WHITE8X8")
+	trackBg:SetVertexColor(TS.COLOR.lockedBg[1], TS.COLOR.lockedBg[2], TS.COLOR.lockedBg[3], 0.9)
+
+	local function trackBorderLine(point1, relPoint1, x1, y1, point2, relPoint2, x2, y2)
+		local line = track:CreateTexture(nil, "BORDER")
+		line:SetTexture("Interface\\Buttons\\WHITE8X8")
+		line:SetVertexColor(TS.COLOR.edgeBright[1], TS.COLOR.edgeBright[2], TS.COLOR.edgeBright[3], 1)
+		line:SetPoint(point1, track, relPoint1, x1, y1)
+		line:SetPoint(point2, track, relPoint2, x2, y2)
+		return line
+	end
+	trackBorderLine("TOPLEFT", "TOPLEFT", 0, 0, "TOPRIGHT", "TOPRIGHT", 0, 0):SetHeight(1)
+	trackBorderLine("BOTTOMLEFT", "BOTTOMLEFT", 0, 0, "BOTTOMRIGHT", "BOTTOMRIGHT", 0, 0):SetHeight(1)
+	trackBorderLine("TOPLEFT", "TOPLEFT", 0, 0, "BOTTOMLEFT", "BOTTOMLEFT", 0, 0):SetWidth(1)
+	trackBorderLine("TOPRIGHT", "TOPRIGHT", 0, 0, "BOTTOMRIGHT", "BOTTOMRIGHT", 0, 0):SetWidth(1)
+
+	-- Plain flat color, not a themed statusbar asset (e.g. UI-StatusBar) --
+	-- avoids any baked-in end-cap art rendering regardless of fill width.
+	local progressFill = track:CreateTexture(nil, "ARTWORK")
+	progressFill:SetPoint("TOPLEFT", track, "TOPLEFT", 1, -1)
+	progressFill:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", 1, 1)
+	progressFill:SetTexture("Interface\\Buttons\\WHITE8X8")
 	progressFill:SetVertexColor(TS.COLOR.gold[1], TS.COLOR.gold[2], TS.COLOR.gold[3])
 	progressFill:SetWidth(1)
-	progressFill:Hide()
 	TS.progressFill = progressFill
-	TS.progressBarWidth = function() return bar:GetWidth() - 4 end
+	TS.progressBarWidth = function() return track:GetWidth() - 2 end
 end
 
 --------------------------------------------------------------------------
@@ -892,11 +922,10 @@ function TalentStage_UpdateLedger()
 			name = d and d.name or ""
 		end
 		if name ~= "" then
-			TS.ledgerText:SetText("Applying "..applying.." of "..TS.queueTotal.." -- "..name)
+			TS.progressLabel:SetText("Applying "..applying.." of "..TS.queueTotal.." -- "..name)
 		else
-			TS.ledgerText:SetText("Applying "..applying.." of "..TS.queueTotal.."...")
+			TS.progressLabel:SetText("Applying "..applying.." of "..TS.queueTotal.."...")
 		end
-		TS.ledgerText:SetTextColor(TS.COLOR.goldBright[1], TS.COLOR.goldBright[2], TS.COLOR.goldBright[3])
 
 		local frac = applying / TS.queueTotal
 		local fullWidth = TS.progressBarWidth()
@@ -904,18 +933,20 @@ function TalentStage_UpdateLedger()
 		if w < 1 then w = 1 end
 		TS.progressFill:SetWidth(w)
 
-		-- progress bar fills the whole ledger box while a confirm run is
-		-- draining, so that space stays doing something useful instead of
-		-- showing two disabled buttons
+		-- label+track replace the staged/unspent text and the Clear/Confirm
+		-- buttons while a confirm run is draining, so that space stays doing
+		-- something useful instead of showing two disabled buttons
+		TS.ledgerText:Hide()
 		TS.confirmButton:Hide()
 		TS.clearButton:Hide()
+		TS.progressLabel:Show()
 		TS.progressBg:Show()
-		TS.progressFill:Show()
 	else
 		TS.ledgerText:SetText("Staged: "..total.."   Unspent: "..(available - total).." / "..available)
 		TS.ledgerText:SetTextColor(TS.COLOR.parchment[1], TS.COLOR.parchment[2], TS.COLOR.parchment[3])
+		TS.ledgerText:Show()
+		TS.progressLabel:Hide()
 		TS.progressBg:Hide()
-		TS.progressFill:Hide()
 		TS.confirmButton:Show()
 		TS.clearButton:Show()
 	end
