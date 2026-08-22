@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Rogue talents — concept redesign v2</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.46.0/tabler-icons.min.css">
+<style>
+  :root{
+    --bg-void:#100c09;
+    --panel:#221b14;
+    --panel-2:#1a140f;
+    --edge:#4a3a24;
+    --edge-bright:#8a6a35;
+    --gold:#d9a94f;
+    --gold-bright:#f3cd7e;
+    --parchment:#d9c9a3;
+    --muted:#8d7f68;
+    --locked-bg:#221c16;
+    --locked-edge:#3c3427;
+    --locked-icon:#544c3b;
+    --pending:#f2d675;
+    --sandbox-bg:#3a1f17;
+    --sandbox-edge:#8a4a2c;
+    --sandbox-text:#f0a868;
+    --assassination:#c23b3b;
+    --combat:#d9862f;
+    --subtlety:#6d84d1;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:
+      repeating-linear-gradient(135deg, rgba(255,255,255,.015) 0 2px, transparent 2px 5px),
+      radial-gradient(ellipse at 50% -10%, #2a2015 0%, var(--bg-void) 55%);
+    color:var(--parchment);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    padding:36px 20px 60px;
+  }
+  .wrap{max-width:1040px;margin:0 auto;}
+  button{font-family:inherit;cursor:pointer;}
+  .titlebar{position:relative;text-align:center;padding:8px 34px;margin-bottom:20px;border-bottom:1px solid var(--edge);}
+  .titlebar-text{
+    font-family:Georgia,"Times New Roman",serif;
+    font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+    font-size:16px;color:var(--gold-bright);
+  }
+  .close-btn{
+    position:absolute;right:0;top:6px;width:22px;height:22px;
+    background:#7a2020;border:1px solid #b03030;border-radius:4px;
+    color:#f5d5d5;font-size:14px;line-height:1;padding:0;
+  }
+  .close-btn:hover{background:#8f2626;}
+  .reset-link{
+    position:absolute;left:0;top:10px;
+    background:none;border:none;color:var(--muted);
+    font-size:10px;text-transform:uppercase;letter-spacing:.06em;padding:2px 4px;
+  }
+  .reset-link:hover{color:var(--gold);}
+  .btn{
+    background:transparent;border:1px solid var(--edge-bright);color:var(--parchment);
+    padding:9px 16px;border-radius:4px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;
+  }
+  .btn:hover{background:rgba(217,169,79,.1);}
+  .btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn-gold{
+    background:linear-gradient(180deg,var(--gold-bright),var(--gold));
+    color:#241a08;border:1px solid #8a6a2c;font-weight:700;
+  }
+  .btn-gold:hover{filter:brightness(1.08);}
+
+  .sandbox-banner{
+    display:none;
+    align-items:center;gap:8px;
+    background:var(--sandbox-bg);
+    border:1px solid var(--sandbox-edge);
+    border-radius:6px;
+    padding:9px 14px;
+    font-size:12px;
+    color:var(--sandbox-text);
+    margin-bottom:16px;
+  }
+  .sandbox-banner i{font-size:16px;}
+
+  .import-row{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;}
+  .import-row input{
+    flex:1;min-width:220px;
+    background:var(--panel-2);
+    border:1px solid var(--edge);
+    border-radius:4px;
+    color:var(--parchment);
+    padding:9px 12px;
+    font-size:12px;
+    font-family:Consolas,Menlo,monospace;
+  }
+  .import-row input::placeholder{color:var(--muted);}
+  .import-row input:focus{outline:none;border-color:var(--gold);}
+  .export-row{display:none;gap:8px;margin:-12px 0 20px;}
+  .export-row input{
+    flex:1;background:var(--panel-2);border:1px solid var(--edge);border-radius:4px;
+    color:var(--gold-bright);padding:9px 12px;font-size:12px;font-family:Consolas,Menlo,monospace;
+  }
+
+  .divider{display:flex;align-items:center;gap:10px;margin:20px 0 24px;}
+  .divider .line{flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--edge-bright),transparent);}
+  .divider .gem{width:8px;height:8px;background:var(--gold);transform:rotate(45deg);flex-shrink:0;}
+
+  .trees{display:flex;gap:34px;justify-content:center;flex-wrap:wrap;}
+  .tree-block{width:270px;}
+  .tree-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .tree-name{display:flex;align-items:center;gap:8px;}
+  .tree-name i{font-size:20px;}
+  .tree-name span{font-family:Georgia,serif;font-weight:700;letter-spacing:.06em;text-transform:uppercase;font-size:14px;color:var(--parchment);}
+  .tree-pts{font-size:12px;font-variant-numeric:tabular-nums;}
+  .tree-pts .pend{color:var(--pending);}
+  .tree-bar{height:2px;margin-bottom:14px;}
+  .grid-wrap{position:relative;width:270px;height:480px;}
+  .grid-wrap svg{position:absolute;inset:0;pointer-events:none;}
+  .grid{position:relative;z-index:1;display:grid;grid-template-columns:repeat(4,60px);grid-template-rows:repeat(7,60px);gap:10px;}
+  .tile{
+    position:relative;width:60px;height:60px;border-radius:6px;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--locked-bg);border:2px solid var(--locked-edge);
+    transition:transform .12s ease;padding:0;
+  }
+  .tile:hover{transform:translateY(-2px);}
+  .tile.is-locked{cursor:not-allowed;}
+  .tile.is-locked:hover{transform:none;}
+  .tile i{font-size:24px;color:var(--locked-icon);}
+  .tile .rank{position:absolute;bottom:2px;right:4px;font-size:9px;font-family:Consolas,Menlo,monospace;color:var(--muted);}
+  .tile.is-flash{animation:completeFlash .65s ease;}
+  @keyframes completeFlash{
+    0%{box-shadow:0 0 0 rgba(243,205,126,0);transform:scale(1);}
+    35%{box-shadow:0 0 26px rgba(243,205,126,1);transform:scale(1.14);}
+    100%{box-shadow:0 0 8px rgba(243,205,126,.3);transform:scale(1);}
+  }
+
+  /* footer: single docked strip, two swappable states, never bleeds past the panel */
+  .footer{
+    margin-top:32px;
+    background:var(--panel);
+    border:1px solid var(--edge-bright);
+    border-radius:10px;
+    padding:14px 20px;
+    box-shadow:0 10px 30px rgba(0,0,0,.5);
+  }
+  .footer-normal{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+  .footer-stats{display:flex;gap:20px;font-size:12px;color:var(--muted);}
+  .footer-stats b{color:var(--gold-bright);font-variant-numeric:tabular-nums;}
+  .footer-actions{display:flex;gap:10px;}
+  .footer-progress{display:none;}
+  .progress-label{font-size:12px;color:var(--gold-bright);margin-bottom:8px;}
+  .progress-label b{font-variant-numeric:tabular-nums;}
+  .progress-track{
+    height:8px;border-radius:4px;overflow:hidden;
+    background:var(--locked-bg);border:1px solid var(--edge);
+  }
+  .progress-fill{
+    height:100%;width:0%;
+    background:linear-gradient(90deg,var(--gold),var(--gold-bright));
+    transition:width .25s ease;
+  }
+  .note{font-size:11px;color:var(--muted);margin-top:6px;}
+  @media (max-width:900px){.trees{flex-direction:column;align-items:center;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="titlebar">
+    <button class="reset-link" id="resetBtn">Reset all</button>
+    <span class="titlebar-text">Talents</span>
+    <button class="close-btn" id="closeBtn" aria-label="Close">×</button>
+  </div>
+
+  <div class="sandbox-banner" id="sandboxBanner">
+    <i class="ti ti-flask"></i>
+    <span>Sandbox mode — previewing this build, nothing is saved to your character until you confirm.</span>
+  </div>
+
+  <div class="import-row">
+    <input type="text" id="importInput" placeholder="Paste a build code or share URL…">
+    <button class="btn" id="importBtn">Import</button>
+    <button class="btn" id="exportBtn">Export</button>
+  </div>
+  <div class="export-row" id="exportRow">
+    <input type="text" id="exportCode" readonly>
+    <button class="btn" id="copyBtn">Copy</button>
+  </div>
+
+  <div class="divider"><div class="line"></div><div class="gem"></div><div class="line"></div></div>
+
+  <div class="trees">
+    <div class="tree-block" data-tree="assassination"></div>
+    <div class="tree-block" data-tree="combat"></div>
+    <div class="tree-block" data-tree="subtlety"></div>
+  </div>
+
+  <div class="footer" id="footer">
+    <div class="footer-normal" id="footerNormal">
+      <div class="footer-stats">
+        <span>Staged: <b id="stagedCount">0</b></span>
+        <span>Unspent: <b id="unspentCount">41 / 41</b></span>
+      </div>
+      <div class="footer-actions">
+        <button class="btn" id="clearBtn">Clear</button>
+        <button class="btn btn-gold" id="confirmBtn">Confirm</button>
+      </div>
+    </div>
+    <div class="footer-progress" id="footerProgress">
+      <div class="progress-label">Applying <b id="progIdx">1</b> of <b id="progTotal">1</b> — <span id="progName"></span></div>
+      <div class="progress-track"><div class="progress-fill" id="progFill"></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const TOTAL_POOL = 41;
+let confirmed = {};
+let pending = {};
+
+const TREES = [
+  { id:'assassination', label:'Assassination', icon:'ti-flask', color:'#c23b3b', talents:[
+    {id:'a1',tier:1,col:1,name:'Malice',maxRank:5,icon:'ti-target'},
+    {id:'a2',tier:1,col:2,name:'Improved eviscerate',maxRank:3,icon:'ti-crosshair'},
+    {id:'a3',tier:1,col:3,name:'Remorseless attacks',maxRank:2,icon:'ti-flame'},
+    {id:'a4',tier:2,col:1,name:'Relentless strikes',maxRank:1,icon:'ti-bolt',prereq:'a1'},
+    {id:'a5',tier:2,col:2,name:'Ruthlessness',maxRank:3,icon:'ti-wind',prereq:'a2'},
+    {id:'a6',tier:2,col:3,name:'Puncturing wounds',maxRank:2,icon:'ti-droplet'},
+    {id:'a7',tier:3,col:1,name:'Improved poisons',maxRank:4,icon:'ti-flask',prereq:'a4'},
+    {id:'a8',tier:3,col:2,name:'Fleet footed',maxRank:2,icon:'ti-footprints'},
+    {id:'a9',tier:3,col:3,name:'Cold blood',maxRank:1,icon:'ti-snowflake'},
+    {id:'a10',tier:3,col:4,name:'Vile poisons',maxRank:3,icon:'ti-skull'},
+    {id:'a11',tier:4,col:2,name:'Seal fate',maxRank:5,icon:'ti-bolt',prereq:'a5'},
+    {id:'a12',tier:4,col:3,name:'Cheat death',maxRank:1,icon:'ti-shield'},
+    {id:'a13',tier:5,col:1,name:'Vigor',maxRank:1,icon:'ti-heart'},
+    {id:'a14',tier:5,col:2,name:'Quick recovery',maxRank:2,icon:'ti-refresh',prereq:'a11'},
+    {id:'a15',tier:6,col:2,name:'Overkill',maxRank:2,icon:'ti-moon',prereq:'a14'},
+    {id:'a16',tier:7,col:2,name:'Mutilate',maxRank:1,icon:'ti-sword',prereq:'a15'}
+  ]},
+  { id:'combat', label:'Combat', icon:'ti-sword', color:'#d9862f', talents:[
+    {id:'c1',tier:1,col:1,name:'Improved gouge',maxRank:2,icon:'ti-eye-off'},
+    {id:'c2',tier:1,col:2,name:'Improved sinister strike',maxRank:3,icon:'ti-sword'},
+    {id:'c3',tier:1,col:3,name:'Deflection',maxRank:5,icon:'ti-shield'},
+    {id:'c16',tier:1,col:4,name:'Improved kick',maxRank:1,icon:'ti-hammer'},
+    {id:'c4',tier:2,col:1,name:'Precision',maxRank:5,icon:'ti-target',prereq:'c1'},
+    {id:'c5',tier:2,col:2,name:'Improved sprint',maxRank:1,icon:'ti-wind'},
+    {id:'c6',tier:2,col:3,name:'Blade twisting',maxRank:2,icon:'ti-crosshair',prereq:'c3'},
+    {id:'c7',tier:3,col:1,name:'Dual wield specialization',maxRank:5,icon:'ti-sword',prereq:'c4'},
+    {id:'c8',tier:3,col:2,name:'Weapon expertise',maxRank:2,icon:'ti-bolt'},
+    {id:'c9',tier:3,col:4,name:'Endurance',maxRank:2,icon:'ti-heart'},
+    {id:'c10',tier:4,col:2,name:'Aggression',maxRank:3,icon:'ti-flame',prereq:'c8'},
+    {id:'c11',tier:4,col:3,name:'Vitality',maxRank:2,icon:'ti-shield'},
+    {id:'c12',tier:5,col:1,name:'Adrenaline rush',maxRank:1,icon:'ti-bolt',prereq:'c7'},
+    {id:'c13',tier:5,col:2,name:'Blade flurry',maxRank:1,icon:'ti-wind',prereq:'c10'},
+    {id:'c14',tier:6,col:2,name:"Bandit's guile",maxRank:3,icon:'ti-crosshair',prereq:'c13'},
+    {id:'c15',tier:7,col:2,name:'Killing spree',maxRank:1,icon:'ti-sword',prereq:'c14'}
+  ]},
+  { id:'subtlety', label:'Subtlety', icon:'ti-eye-off', color:'#6d84d1', talents:[
+    {id:'s1',tier:1,col:1,name:'Master of deception',maxRank:5,icon:'ti-eye-off'},
+    {id:'s2',tier:1,col:2,name:'Camouflage',maxRank:5,icon:'ti-footprints'},
+    {id:'s3',tier:1,col:3,name:'Opportunity',maxRank:5,icon:'ti-target'},
+    {id:'s16',tier:1,col:4,name:'Sleight of hand',maxRank:1,icon:'ti-crosshair'},
+    {id:'s4',tier:2,col:1,name:'Ghostly strike',maxRank:1,icon:'ti-ghost',prereq:'s1'},
+    {id:'s5',tier:2,col:2,name:'Improved ambush',maxRank:3,icon:'ti-crosshair',prereq:'s2'},
+    {id:'s6',tier:2,col:4,name:'Elusiveness',maxRank:2,icon:'ti-shield'},
+    {id:'s7',tier:3,col:1,name:'Setup',maxRank:3,icon:'ti-target'},
+    {id:'s8',tier:3,col:2,name:'Initiative',maxRank:3,icon:'ti-bolt',prereq:'s5'},
+    {id:'s9',tier:3,col:3,name:'Serrated blades',maxRank:3,icon:'ti-sword'},
+    {id:'s10',tier:4,col:2,name:'Riposte',maxRank:1,icon:'ti-shield',prereq:'s8'},
+    {id:'s11',tier:4,col:3,name:'Improved kidney shot',maxRank:2,icon:'ti-crosshair'},
+    {id:'s12',tier:5,col:1,name:'Deadliness',maxRank:5,icon:'ti-sword'},
+    {id:'s13',tier:5,col:2,name:'Preparation',maxRank:1,icon:'ti-clock',prereq:'s10'},
+    {id:'s14',tier:6,col:2,name:'Premeditation',maxRank:1,icon:'ti-wind',prereq:'s13'},
+    {id:'s15',tier:7,col:2,name:'Shadow dance',maxRank:1,icon:'ti-moon',prereq:'s14'}
+  ]}
+];
+
+function req(tier){ return (tier-1)*5; }
+function totalConfirmed(){ return Object.values(confirmed).reduce((a,b)=>a+b,0); }
+function totalPending(){ return Object.values(pending).reduce((a,b)=>a+b,0); }
+function remaining(){ return TOTAL_POOL - totalConfirmed() - totalPending(); }
+function treeConfirmedTotal(tree){ return tree.talents.reduce((s,t)=>s+(confirmed[t.id]||0),0); }
+function treePendingTotal(tree){ return tree.talents.reduce((s,t)=>s+(pending[t.id]||0),0); }
+function colX(col){ return (col-1)*70 + 30; }
+function rowTop(tier){ return (tier-1)*70; }
+function rowBottom(tier){ return rowTop(tier)+60; }
+
+function buildTreeBlock(tree){
+  const el = document.querySelector('.tree-block[data-tree="'+tree.id+'"]');
+  const confTotal = treeConfirmedTotal(tree);
+  const pendTotal = treePendingTotal(tree);
+
+  let head = '<div class="tree-head"><div class="tree-name">'
+    + '<i class="ti '+tree.icon+'" style="color:'+tree.color+'"></i>'
+    + '<span>'+tree.label+'</span></div>'
+    + '<div class="tree-pts" style="color:'+tree.color+'">'+confTotal
+    + (pendTotal>0 ? ' <span class="pend">+'+pendTotal+'</span>' : '')
+    + ' points</div></div>'
+    + '<div class="tree-bar" style="background:'+tree.color+'"></div>';
+
+  let tiles = '';
+  tree.talents.forEach(t=>{
+    const rank = confirmed[t.id]||0;
+    const pend = pending[t.id]||0;
+    const total = rank+pend;
+    const locked = confTotal < req(t.tier);
+    const maxed = total>=t.maxRank;
+    let border, bg, iconColor, rankColor, rankText, glow='';
+    if(locked){
+      border='var(--locked-edge)'; bg='var(--locked-bg)'; iconColor='var(--locked-icon)'; rankColor='var(--locked-icon)';
+      rankText = req(t.tier);
+    } else if(pend>0){
+      border='var(--pending)'; bg='var(--panel)'; iconColor='var(--pending)'; rankColor='var(--pending)';
+      rankText = total+'/'+t.maxRank;
+    } else if(rank>0){
+      border=tree.color; bg='var(--panel-2)'; iconColor=tree.color; rankColor=tree.color;
+      rankText = rank+'/'+t.maxRank;
+      if(maxed) glow='box-shadow:0 0 10px '+tree.color+'80;';
+    } else {
+      border='var(--edge)'; bg='var(--panel)'; iconColor=tree.color; rankColor='var(--muted)';
+      rankText = '0/'+t.maxRank;
+    }
+    tiles += '<button class="tile" data-tree="'+tree.id+'" data-id="'+t.id+'" title="'+t.name+' — '+rankText+'" '
+      + 'style="grid-column:'+t.col+';grid-row:'+t.tier+';border-color:'+border+';background:'+bg+';'+glow+'">'
+      + '<i class="ti '+t.icon+'" style="color:'+iconColor+'"></i>'
+      + '<span class="rank" style="color:'+rankColor+'">'+rankText+'</span>'
+      + '</button>';
+  });
+
+  let lines = '';
+  tree.talents.forEach(t=>{
+    if(!t.prereq) return;
+    const p = tree.talents.find(x=>x.id===t.prereq);
+    if(!p) return;
+    const parentRank = confirmed[p.id]||0;
+    const stroke = parentRank>0 ? tree.color : '#4a3a24';
+    const x1=colX(p.col), y1=rowBottom(p.tier), x2=colX(t.col), y2=rowTop(t.tier);
+    lines += '<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="'+stroke+'" stroke-width="2.5"/>'
+      + '<circle cx="'+x1+'" cy="'+y1+'" r="3" fill="'+stroke+'"/>'
+      + '<circle cx="'+x2+'" cy="'+y2+'" r="3" fill="'+stroke+'"/>';
+  });
+
+  el.innerHTML = head
+    + '<div class="grid-wrap">'
+    + '<svg viewBox="0 0 270 480">'+lines+'</svg>'
+    + '<div class="grid">'+tiles+'</div>'
+    + '</div>';
+}
+
+function render(){
+  TREES.forEach(buildTreeBlock);
+  document.getElementById('stagedCount').textContent = totalPending();
+  document.getElementById('unspentCount').textContent = remaining()+' / '+TOTAL_POOL;
+}
+
+function onTileClick(treeId, id){
+  const tree = TREES.find(x=>x.id===treeId);
+  const talent = tree.talents.find(t=>t.id===id);
+  const rank = (confirmed[id]||0)+(pending[id]||0);
+  if(rank>=talent.maxRank) return;
+  if(remaining()<=0) return;
+  if(treeConfirmedTotal(tree) < req(talent.tier)) return;
+  pending[id]=(pending[id]||0)+1;
+  render();
+}
+
+TREES.forEach(tree=>{
+  document.querySelector('.tree-block[data-tree="'+tree.id+'"]').addEventListener('click', e=>{
+    const btn = e.target.closest('button[data-id]');
+    if(!btn) return;
+    onTileClick(btn.getAttribute('data-tree'), btn.getAttribute('data-id'));
+  });
+});
+
+document.getElementById('confirmBtn').addEventListener('click', ()=>{
+  const pend = totalPending();
+  if(pend === 0) return;
+  if(pend === 1){
+    // single point lands basically instantly in-game, no point showing a
+    // progress bar for a queue of one
+    for(const id in pending){ confirmed[id]=(confirmed[id]||0)+pending[id]; }
+    pending={};
+    render();
+    return;
+  }
+  const sequence = [];
+  Object.keys(pending).forEach(id=>{
+    for(let n=0;n<pending[id];n++) sequence.push(id);
+  });
+  runApplyQueue(sequence, {sandbox:false});
+});
+document.getElementById('clearBtn').addEventListener('click', ()=>{ pending={}; render(); });
+document.getElementById('resetBtn').addEventListener('click', ()=>{ confirmed={}; pending={}; render(); });
+
+// --- demo-only: fake a batch import so the in-frame progress state is visible ---
+function playChime(){
+  try{
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const now = ctx.currentTime;
+    [660, 880].forEach((freq, i)=>{
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, now + i*0.12);
+      gain.gain.exponentialRampToValueAtTime(0.22, now + i*0.12 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + i*0.12 + 0.3);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now + i*0.12);
+      osc.stop(now + i*0.12 + 0.32);
+    });
+  }catch(e){}
+}
+
+// Shared drain-and-display mechanism. Both the manual "stage several, hit
+// Confirm" path and the Import/sandbox path funnel through this — same
+// queue, same progress footer, only difference is whether the sandbox
+// banner shows. This is the piece that was missing for the manual path.
+function runApplyQueue(sequence, opts){
+  opts = opts || {};
+  const footerNormal = document.getElementById('footerNormal');
+  const footerProgress = document.getElementById('footerProgress');
+  const sandboxBanner = document.getElementById('sandboxBanner');
+  const TICK_MS = 1000; // real cadence, for ref — LearnTalent can only fire ~once/sec in-game
+
+  footerNormal.style.display = 'none';
+  footerProgress.style.display = 'block';
+  if(opts.sandbox) sandboxBanner.style.display = 'flex';
+  document.getElementById('progTotal').textContent = sequence.length;
+  document.getElementById('progIdx').textContent = '0';
+  document.getElementById('progName').textContent = 'queued…';
+  document.getElementById('progFill').style.width = '0%';
+  render();
+
+  let i = 0;
+  const step = ()=>{
+    if(i>=sequence.length){
+      sequence.forEach(id=>{
+        const btn = document.querySelector('button[data-id="'+id+'"]');
+        if(btn) btn.classList.add('is-flash');
+      });
+      playChime();
+      setTimeout(()=>{
+        sequence.forEach(id=>{
+          const btn = document.querySelector('button[data-id="'+id+'"]');
+          if(btn) btn.classList.remove('is-flash');
+        });
+        footerNormal.style.display='flex';
+        footerProgress.style.display='none';
+        sandboxBanner.style.display='none';
+      }, 650);
+      return;
+    }
+    const id = sequence[i];
+    const tree = TREES.find(t=>t.talents.some(tal=>tal.id===id));
+    const talent = tree.talents.find(tal=>tal.id===id);
+    if(pending[id]>1){ pending[id]--; } else { delete pending[id]; }
+    confirmed[id] = (confirmed[id]||0)+1;
+    i++;
+    document.getElementById('progIdx').textContent = i;
+    document.getElementById('progName').textContent = talent.name;
+    document.getElementById('progFill').style.width = Math.round((i/sequence.length)*100)+'%';
+    render();
+    setTimeout(step, TICK_MS);
+  };
+  setTimeout(step, TICK_MS);
+}
+
+// Import demo: 14 points, matching your real 14-point test, so the pacing
+// here actually reflects what a full ~14 second apply feels like.
+function runImportDemo(){
+  const sequence = ['c3','c3','c3','c3','c3','c1','c1','c2','c2','c2','c16','c4','c4','c5'];
+  sequence.forEach(id => { pending[id] = (pending[id]||0)+1; });
+  render();
+  runApplyQueue(sequence, {sandbox:true});
+}
+document.getElementById('importBtn').addEventListener('click', runImportDemo);
+
+document.getElementById('exportBtn').addEventListener('click', ()=>{
+  const row = document.getElementById('exportRow');
+  const visible = row.style.display === 'flex';
+  if(visible){ row.style.display='none'; return; }
+  const parts = TREES.map(t => t.talents.map(tal => confirmed[tal.id]||0).join('')).join('-');
+  document.getElementById('exportCode').value = 'octowow.st/talents/rogue/?points='+btoa(parts).replace(/=+$/,'');
+  row.style.display = 'flex';
+});
+document.getElementById('copyBtn').addEventListener('click', ()=>{
+  const el = document.getElementById('exportCode');
+  el.select();
+  try{ navigator.clipboard.writeText(el.value); }catch(e){ document.execCommand('copy'); }
+});
+
+render();
+</script>
+</body>
+</html>

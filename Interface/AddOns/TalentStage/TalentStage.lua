@@ -18,6 +18,7 @@ TS.HEADER_HEIGHT   = 62
 TS.TREE_GAP        = 28
 TS.MARGIN          = 16
 TS.TITLE_HEIGHT    = 40
+TS.IMPORT_ROW_HEIGHT = 30
 TS.LEDGER_HEIGHT   = 68
 TS.QUEUE_FALLBACK_DELAY = 1.0 -- seconds; LearnTalent has a short server-side
                                -- delay between calls, this is a safety net in
@@ -38,6 +39,45 @@ TS.PANEL_BACKDROP = {
 	edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
 	tile = true, tileSize = 16, edgeSize = 16,
 	insets = { left = 4, right = 4, top = 4, bottom = 4 },
+}
+
+-- lightweight backdrop for the import/export text field
+TS.INPUT_BACKDROP = {
+	bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+	edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+	tile = true, tileSize = 8, edgeSize = 8,
+	insets = { left = 2, right = 2, top = 2, bottom = 2 },
+}
+
+-- thin border-only backdrop applied directly to each talent button, so tile
+-- state (locked/available/staged/confirmed) reads as a colored ring around
+-- the icon, matching the mockup's tile treatment. No bgFile: the icon
+-- texture already fills the button, this only draws the edge on top of it.
+TS.TILE_BACKDROP = {
+	edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+	edgeSize = 8,
+}
+
+-- Palette lifted from the rogue-talent-redesign-v2.html mockup (see CLAUDE.md
+-- "Design reference"). Generic, not per-tree-colored: the mockup uses
+-- per-tree accent colors (red/orange/blue) that only make sense for a
+-- Rogue's three specific trees, but this addon runs against any class's
+-- tabs, so every tree shares one gold accent instead.
+TS.COLOR = {
+	bgVoid       = { 0.063, 0.047, 0.035 },
+	panel        = { 0.133, 0.106, 0.078 },
+	panel2       = { 0.102, 0.078, 0.059 },
+	edge         = { 0.290, 0.227, 0.141 },
+	edgeBright   = { 0.541, 0.416, 0.208 },
+	gold         = { 0.851, 0.663, 0.310 },
+	goldBright   = { 0.953, 0.804, 0.494 },
+	parchment    = { 0.851, 0.788, 0.639 },
+	muted        = { 0.553, 0.498, 0.408 },
+	lockedBg     = { 0.133, 0.110, 0.086 },
+	lockedEdge   = { 0.235, 0.204, 0.153 },
+	lockedIcon   = { 0.329, 0.298, 0.231 },
+	pending      = { 0.949, 0.839, 0.459 },
+	sandboxText  = { 0.941, 0.659, 0.408 },
 }
 
 TS.POLL_INTERVAL = 0.5 -- seconds; periodic safety-net refresh while the
@@ -163,10 +203,12 @@ end
 -- UI construction (built once, on first show)
 --------------------------------------------------------------------------
 
-function TalentStage_ApplyPlainBackdrop(frame, alpha)
+function TalentStage_ApplyPlainBackdrop(frame, alpha, bg, border)
+	bg = bg or TS.COLOR.bgVoid
+	border = border or TS.COLOR.edgeBright
 	frame:SetBackdrop(TS.PLAIN_BACKDROP)
-	frame:SetBackdropColor(0, 0, 0, alpha or 1)
-	frame:SetBackdropBorderColor(1, 1, 1, 1)
+	frame:SetBackdropColor(bg[1], bg[2], bg[3], alpha or 1)
+	frame:SetBackdropBorderColor(border[1], border[2], border[3], 1)
 end
 
 function TalentStage_BuildUI()
@@ -203,14 +245,15 @@ function TalentStage_BuildUI()
 		local panel = CreateFrame("Frame", "TalentStagePanel"..tab, TalentStageFrame)
 		panel:SetWidth(panelWidth)
 		panel:SetHeight(panelHeight)
-		panel:SetPoint("TOPLEFT", TalentStageFrame, "TOPLEFT", totalWidth, -TS.TITLE_HEIGHT)
+		panel:SetPoint("TOPLEFT", TalentStageFrame, "TOPLEFT", totalWidth, -(TS.TITLE_HEIGHT + TS.IMPORT_ROW_HEIGHT))
 
 		panel:SetBackdrop(TS.PANEL_BACKDROP)
-		panel:SetBackdropColor(0, 0, 0, 0.6)
-		panel:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
+		panel:SetBackdropColor(TS.COLOR.panel2[1], TS.COLOR.panel2[2], TS.COLOR.panel2[3], 0.85)
+		panel:SetBackdropBorderColor(TS.COLOR.edgeBright[1], TS.COLOR.edgeBright[2], TS.COLOR.edgeBright[3], 1)
 
 		local header = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 		header:SetPoint("TOP", panel, "TOP", 0, -8)
+		header:SetTextColor(TS.COLOR.parchment[1], TS.COLOR.parchment[2], TS.COLOR.parchment[3])
 		do
 			local fontPath, fontSize, fontFlags = header:GetFont()
 			header:SetFont(fontPath, fontSize + 5, fontFlags)
@@ -249,6 +292,9 @@ function TalentStage_BuildUI()
 				local py = -((d.tier - 1) * TS.TIER_SPACING) - TS.HEADER_HEIGHT
 				btn:SetPoint("TOPLEFT", panel, "TOPLEFT", px, py)
 				d.px, d.py = px, py
+
+				btn:SetBackdrop(TS.TILE_BACKDROP)
+				btn:SetBackdropBorderColor(TS.COLOR.edge[1], TS.COLOR.edge[2], TS.COLOR.edge[3], 1)
 
 				local iconTex = btn:CreateTexture(nil, "ARTWORK")
 				iconTex:SetAllPoints(btn)
@@ -304,32 +350,94 @@ function TalentStage_BuildUI()
 	-- (the loop above adds it unconditionally each iteration); drop it here
 	-- so the frame ends at the last tree plus a plain right-side margin,
 	-- instead of a full tree-gap-sized gap plus that margin stacked together.
-	local totalHeight = TS.TITLE_HEIGHT + maxPanelHeight + TS.LEDGER_HEIGHT
+	local totalHeight = TS.TITLE_HEIGHT + TS.IMPORT_ROW_HEIGHT + maxPanelHeight + TS.LEDGER_HEIGHT
 	TalentStageFrame:SetWidth(totalWidth - TS.TREE_GAP + TS.MARGIN)
 	TalentStageFrame:SetHeight(totalHeight)
 
-	TalentStage_ApplyPlainBackdrop(TalentStageFrame, 0.9)
+	TalentStage_ApplyPlainBackdrop(TalentStageFrame, 0.92)
 
 	local title = TalentStageFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 	title:SetPoint("TOP", TalentStageFrame, "TOP", 0, -14)
+	title:SetTextColor(TS.COLOR.goldBright[1], TS.COLOR.goldBright[2], TS.COLOR.goldBright[3])
 	title:SetText("Talents")
 	TalentStageFrame.title = title
 
 	local sandboxLabel = TalentStageFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	sandboxLabel:SetPoint("TOP", title, "BOTTOM", 0, -2)
-	sandboxLabel:SetTextColor(1, 0.3, 0.3)
+	sandboxLabel:SetTextColor(TS.COLOR.sandboxText[1], TS.COLOR.sandboxText[2], TS.COLOR.sandboxText[3])
 	sandboxLabel:SetText("SANDBOX MODE - not saved to character")
 	sandboxLabel:Hide()
 	TS.sandboxLabel = sandboxLabel
 
+	TalentStage_BuildImportRow()
 	TalentStage_BuildLedger()
 	TalentStage_BuildSettings()
+end
+
+--------------------------------------------------------------------------
+-- Import/export row: matches the rogue-talent-redesign-v2.html mockup's
+-- always-visible row above the trees. The actual build-code codec doesn't
+-- exist yet (separate future task, see CLAUDE.md "Design reference" /
+-- Phase 2 decision) -- these controls are wired to a no-op placeholder for
+-- now, not left out, so the layout/chrome can be reviewed as a whole.
+--------------------------------------------------------------------------
+
+function TalentStage_ImportExportNoop()
+	DEFAULT_CHAT_FRAME:AddMessage("TalentStage: import/export isn't implemented yet.")
+end
+
+function TalentStage_BuildImportRow()
+	local row = CreateFrame("Frame", "TalentStageImportRow", TalentStageFrame)
+	row:SetPoint("TOPLEFT", TalentStageFrame, "TOPLEFT", TS.MARGIN, -TS.TITLE_HEIGHT)
+	row:SetPoint("TOPRIGHT", TalentStageFrame, "TOPRIGHT", -TS.MARGIN, -TS.TITLE_HEIGHT)
+	row:SetHeight(TS.IMPORT_ROW_HEIGHT)
+
+	local exportBtn = CreateFrame("Button", "TalentStageExportButton", row, "UIPanelButtonTemplate")
+	exportBtn:SetWidth(70)
+	exportBtn:SetHeight(22)
+	exportBtn:SetPoint("RIGHT", row, "RIGHT", 0, -4)
+	exportBtn:SetText("Export")
+	exportBtn:SetScript("OnClick", TalentStage_ImportExportNoop)
+	TS.exportButton = exportBtn
+
+	local importBtn = CreateFrame("Button", "TalentStageImportButton", row, "UIPanelButtonTemplate")
+	importBtn:SetWidth(70)
+	importBtn:SetHeight(22)
+	importBtn:SetPoint("RIGHT", exportBtn, "LEFT", -6, 0)
+	importBtn:SetText("Import")
+	importBtn:SetScript("OnClick", TalentStage_ImportExportNoop)
+	TS.importButton = importBtn
+
+	local editBg = CreateFrame("Frame", "TalentStageImportBox", row)
+	editBg:SetPoint("LEFT", row, "LEFT", 0, -4)
+	editBg:SetPoint("RIGHT", importBtn, "LEFT", -8, 0)
+	editBg:SetHeight(22)
+	editBg:SetBackdrop(TS.INPUT_BACKDROP)
+	editBg:SetBackdropColor(TS.COLOR.panel2[1], TS.COLOR.panel2[2], TS.COLOR.panel2[3], 0.9)
+	editBg:SetBackdropBorderColor(TS.COLOR.edgeBright[1], TS.COLOR.edgeBright[2], TS.COLOR.edgeBright[3], 1)
+
+	local edit = CreateFrame("EditBox", "TalentStageImportEditBox", editBg)
+	edit:SetAutoFocus(false)
+	edit:SetFontObject(ChatFontNormal)
+	edit:SetPoint("LEFT", editBg, "LEFT", 8, 0)
+	edit:SetPoint("RIGHT", editBg, "RIGHT", -8, 0)
+	edit:SetHeight(18)
+	edit:SetTextColor(TS.COLOR.parchment[1], TS.COLOR.parchment[2], TS.COLOR.parchment[3])
+	edit:SetScript("OnEscapePressed", function() this:ClearFocus() end)
+	TS.importEditBox = edit
+
+	TS.importRow = row
 end
 
 --------------------------------------------------------------------------
 -- Settings: currently just the dev sandbox toggle. The gear icon/panel is
 -- deliberately generic so future real settings (theme, etc, see CLAUDE.md
 -- backlog) can be added as more rows without restructuring this.
+--
+-- Left visible for now for in-progress testing (was hidden briefly during
+-- Phase 2, see CLAUDE.md "Design reference" decision, 2026-08-22, which
+-- expects it to go away once sandbox mode is no longer needed for dev
+-- testing) -- `gear:Hide()` is the one line to remove it again later.
 --------------------------------------------------------------------------
 
 function TalentStage_BuildSettings()
@@ -418,10 +526,16 @@ function TalentStage_BuildLedger()
 	bar:SetPoint("BOTTOMLEFT", TalentStageFrame, "BOTTOMLEFT", TS.MARGIN, TS.MARGIN)
 	bar:SetPoint("BOTTOMRIGHT", TalentStageFrame, "BOTTOMRIGHT", -TS.MARGIN, TS.MARGIN)
 	bar:SetHeight(TS.LEDGER_HEIGHT - TS.MARGIN)
-	TalentStage_ApplyPlainBackdrop(bar, 0.7)
+	-- Same tin/tooltip-style box as the tree panels and import field, not the
+	-- Blizzard dialog-frame backdrop -- only TalentStageFrame itself (the
+	-- outer panel) uses TS.PLAIN_BACKDROP now.
+	bar:SetBackdrop(TS.PANEL_BACKDROP)
+	bar:SetBackdropColor(TS.COLOR.panel2[1], TS.COLOR.panel2[2], TS.COLOR.panel2[3], 0.85)
+	bar:SetBackdropBorderColor(TS.COLOR.edgeBright[1], TS.COLOR.edgeBright[2], TS.COLOR.edgeBright[3], 1)
 
 	local text = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	text:SetPoint("LEFT", bar, "LEFT", 16, 0)
+	text:SetTextColor(TS.COLOR.parchment[1], TS.COLOR.parchment[2], TS.COLOR.parchment[3])
 	TS.ledgerText = text
 
 	local confirmBtn = CreateFrame("Button", "TalentStageConfirmButton", bar, "UIPanelButtonTemplate")
@@ -455,7 +569,7 @@ function TalentStage_BuildLedger()
 	local progressBg = bar:CreateTexture(nil, "BACKGROUND")
 	progressBg:SetPoint("TOPLEFT", bar, "TOPLEFT", 2, -2)
 	progressBg:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", -2, 2)
-	progressBg:SetTexture(0, 0, 0, 0.5)
+	progressBg:SetTexture(TS.COLOR.lockedBg[1], TS.COLOR.lockedBg[2], TS.COLOR.lockedBg[3], 0.9)
 	progressBg:Hide()
 	TS.progressBg = progressBg
 
@@ -463,7 +577,7 @@ function TalentStage_BuildLedger()
 	progressFill:SetPoint("TOPLEFT", bar, "TOPLEFT", 2, -2)
 	progressFill:SetHeight(TS.LEDGER_HEIGHT - TS.MARGIN - 4)
 	progressFill:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
-	progressFill:SetVertexColor(0.1, 0.8, 0.1)
+	progressFill:SetVertexColor(TS.COLOR.gold[1], TS.COLOR.gold[2], TS.COLOR.gold[3])
 	progressFill:SetWidth(1)
 	progressFill:Hide()
 	TS.progressFill = progressFill
@@ -714,6 +828,7 @@ function TalentStage_Refresh()
 			-- inviting a click that Stage() would just reject.
 			local lit = tierUnlocked and prereqsMet and (effRank > 0 or pointsLeft > 0)
 			local usable = lit and effRank < maxRank
+			local staged = TalentStage_GetStaged(tab, idx)
 
 			if lit then
 				btn.icon:SetVertexColor(1, 1, 1)
@@ -727,8 +842,30 @@ function TalentStage_Refresh()
 				btn.rankText:SetTextColor(0.6, 0.6, 0.6)
 			end
 
-			btn.stagedGlow = TalentStage_GetStaged(tab, idx) > 0
-			if not btn.stagedGlow and not btn.confirmFlashElapsed then
+			-- tile border color by state, matching the mockup's
+			-- locked/available/staged/confirmed tile treatment
+			local border
+			if not tierUnlocked or not prereqsMet then
+				border = TS.COLOR.lockedEdge
+			elseif staged > 0 then
+				border = TS.COLOR.pending
+			elseif effRank > 0 then
+				border = TS.COLOR.gold
+			else
+				border = TS.COLOR.edge
+			end
+			btn:SetBackdropBorderColor(border[1], border[2], border[3], 1)
+
+			btn.stagedGlow = staged > 0
+			-- maxed-rank talents get a static soft gold glow (mockup's maxed-
+			-- tile box-shadow); staging always takes visual priority over it
+			-- since it's the more actionable state
+			btn.maxedGlow = (not btn.stagedGlow) and effRank > 0 and effRank >= maxRank
+			if btn.maxedGlow then
+				btn.glow:SetVertexColor(TS.COLOR.gold[1], TS.COLOR.gold[2], TS.COLOR.gold[3])
+				btn.glow:SetAlpha(0.28)
+			elseif not btn.stagedGlow and not btn.confirmFlashElapsed and not btn.tierFlashElapsed then
+				btn.glow:SetVertexColor(1, 1, 1)
 				btn.glow:SetAlpha(0)
 			end
 		end
@@ -747,7 +884,19 @@ function TalentStage_UpdateLedger()
 		-- +1: the in-flight point counts as "being applied", not "done" yet
 		local applying = TS.queueDone + 1
 		if applying > TS.queueTotal then applying = TS.queueTotal end
-		TS.ledgerText:SetText("Applying "..applying.." of "..TS.queueTotal.."...")
+
+		local name = ""
+		if TS.inFlight then
+			local panel = TS.panels[TS.inFlight.tab]
+			local d = panel and panel.info[TS.inFlight.idx]
+			name = d and d.name or ""
+		end
+		if name ~= "" then
+			TS.ledgerText:SetText("Applying "..applying.." of "..TS.queueTotal.." -- "..name)
+		else
+			TS.ledgerText:SetText("Applying "..applying.." of "..TS.queueTotal.."...")
+		end
+		TS.ledgerText:SetTextColor(TS.COLOR.goldBright[1], TS.COLOR.goldBright[2], TS.COLOR.goldBright[3])
 
 		local frac = applying / TS.queueTotal
 		local fullWidth = TS.progressBarWidth()
@@ -764,6 +913,7 @@ function TalentStage_UpdateLedger()
 		TS.progressFill:Show()
 	else
 		TS.ledgerText:SetText("Staged: "..total.."   Unspent: "..(available - total).." / "..available)
+		TS.ledgerText:SetTextColor(TS.COLOR.parchment[1], TS.COLOR.parchment[2], TS.COLOR.parchment[3])
 		TS.progressBg:Hide()
 		TS.progressFill:Hide()
 		TS.confirmButton:Show()
@@ -799,18 +949,141 @@ function TalentStage_GetConnectorTexture(panel)
 	return tex
 end
 
+-- Snap to whole pixels. Bilinear filtering on WHITE8X8 smears any edge that
+-- lands on a fractional pixel into a soft blur -- most visible on the small
+-- arrowhead bars, since a half-pixel offset is a bigger fraction of an 8px
+-- (or smaller) segment than of a long connector line.
+local function TalentStage_Snap(v)
+	if v < 0 then
+		return -(math.floor(-v + 0.5))
+	end
+	return math.floor(v + 0.5)
+end
+
 function TalentStage_DrawSegment(panel, x, y, w, h, r, g, b)
 	if w < 0 then x = x + w; w = -w end
 	if h < 0 then y = y - h; h = -h end
 	if w < 2 then w = 2 end
 	if h < 2 then h = 2 end
+	x = TalentStage_Snap(x)
+	y = TalentStage_Snap(y)
+	w = TalentStage_Snap(w)
+	h = TalentStage_Snap(h)
 
 	local tex = TalentStage_GetConnectorTexture(panel)
 	tex:ClearAllPoints()
-	tex:SetPoint("TOPLEFT", panel, "TOPLEFT", x, y)
+	tex:SetPoint("TOPLEFT", panel.connectorLayer, "TOPLEFT", x, y)
 	tex:SetWidth(w)
 	tex:SetHeight(h)
 	tex:SetVertexColor(r, g, b, 1)
+end
+
+-- Small square dot centered at (cx, cy), same texture pool as the line
+-- segments -- the mockup's connector joints are circles, but there's no round
+-- texture readily at hand in this client, and a small square reads close
+-- enough at this size. cy is in the same top-left-origin, y-more-negative-
+-- going-down space as everything else here, so the top-left corner is
+-- cy + half (moving "up"/less negative by half the dot's size).
+function TalentStage_DrawJoint(panel, cx, cy, size, r, g, b)
+	local half = size / 2
+	TalentStage_DrawSegment(panel, cx - half, cy + half, size, size, r, g, b)
+end
+
+local TS_JOINT_SIZE = 6
+
+-- Arrowheads: no native texture rotation in this client, so these are faked
+-- as a stepped taper of solid bars (wide -> narrow), same WHITE8X8 technique
+-- as everything else here. Only ever used at the dependent (arrival) end of
+-- a connector, pointing in the direction the line actually arrives from, so
+-- the two ends of a connector read differently (source dot vs. arrival
+-- arrow) instead of two identical dots.
+local TS_ARROW_SIZES = { 8, 5, 2 }
+
+-- tipY: the y-coordinate the arrow points at (touches the dependent talent).
+function TalentStage_DrawArrowDown(panel, cx, tipY, r, g, b)
+	for i = 1, table.getn(TS_ARROW_SIZES) do
+		local w = TS_ARROW_SIZES[i]
+		local y = tipY + (table.getn(TS_ARROW_SIZES) - i) * 2
+		TalentStage_DrawSegment(panel, cx - w / 2, y, w, 2, r, g, b)
+	end
+end
+
+-- tipX: the x-coordinate the arrow points at. dir: 1 = pointing right
+-- (tip is the rightmost point), -1 = pointing left (tip is the leftmost).
+function TalentStage_DrawArrowHoriz(panel, tipX, cy, dir, r, g, b)
+	for i = 1, table.getn(TS_ARROW_SIZES) do
+		local h = TS_ARROW_SIZES[i]
+		local d = (table.getn(TS_ARROW_SIZES) - i) * 2
+		local x = tipX - dir * d
+		TalentStage_DrawSegment(panel, x - 1, cy - h / 2, 2, h, r, g, b)
+	end
+end
+
+-- Draws one prereq->dependent connector: straight vertical (same column),
+-- straight horizontal (same tier), or an L-shaped two-segment connector for
+-- the diagonal (different tier AND column) case. p and d only need px/py
+-- (top-left button anchor, same convention as panel.info[idx].px/py) and are
+-- otherwise plain data -- this is also exercised directly, with synthetic
+-- p/d, by TalentStage_BuildConnectorTestFrame (see "/ts testconnectors"),
+-- since no real class dump has ever hit the diagonal branch (CLAUDE.md "Open
+-- questions" #4).
+function TalentStage_DrawConnectorEdge(panel, p, d, met)
+	local r, g, b
+	if met then
+		r, g, b = TS.COLOR.gold[1], TS.COLOR.gold[2], TS.COLOR.gold[3]
+	else
+		r, g, b = TS.COLOR.edge[1], TS.COLOR.edge[2], TS.COLOR.edge[3]
+	end
+
+	local fromCx, fromCy = p.px + TS.BUTTON_SIZE / 2, p.py - TS.BUTTON_SIZE / 2
+	local toCx, toCy = d.px + TS.BUTTON_SIZE / 2, d.py - TS.BUTTON_SIZE / 2
+
+	if p.column == d.column then
+		-- straight vertical segment between the two buttons.
+		-- topY is already the correct (higher/less-negative) anchor, so the
+		-- height must be topY - botY, not botY - topY: botY is always more
+		-- negative than topY here, so the latter is always negative and
+		-- DrawSegment's h<0 normalization would shift the whole segment up
+		-- by its own length instead of fixing it.
+		local topY = p.py - TS.BUTTON_SIZE
+		local botY = d.py
+		TalentStage_DrawSegment(panel, fromCx - 2, topY, 4, topY - botY, r, g, b)
+		TalentStage_DrawJoint(panel, fromCx, topY, TS_JOINT_SIZE, r, g, b)
+		TalentStage_DrawArrowDown(panel, toCx, botY, r, g, b)
+	elseif p.tier == d.tier then
+		-- straight horizontal segment between the two buttons
+		local leftX, rightX
+		if p.px < d.px then leftX, rightX = p.px, d.px else leftX, rightX = d.px, p.px end
+		local edgeY = fromCy
+		TalentStage_DrawSegment(panel, leftX + TS.BUTTON_SIZE, edgeY - 2, rightX - (leftX + TS.BUTTON_SIZE), 4, r, g, b)
+		if p.px < d.px then
+			-- dependent is the right-hand node
+			TalentStage_DrawJoint(panel, leftX + TS.BUTTON_SIZE, edgeY, TS_JOINT_SIZE, r, g, b)
+			TalentStage_DrawArrowHoriz(panel, rightX, edgeY, 1, r, g, b)
+		else
+			-- dependent is the left-hand node
+			TalentStage_DrawArrowHoriz(panel, leftX + TS.BUTTON_SIZE, edgeY, -1, r, g, b)
+			TalentStage_DrawJoint(panel, rightX, edgeY, TS_JOINT_SIZE, r, g, b)
+		end
+	else
+		-- different tier and column: an L-shaped two segment connector
+		-- (vertical from the prereq, then horizontal into the dependent
+		-- talent's column). Same sign convention as the vertical branch
+		-- above: topY is the correct anchor, height is topY - toCy.
+		local topY = p.py - TS.BUTTON_SIZE
+		TalentStage_DrawSegment(panel, fromCx - 2, topY, 4, topY - toCy, r, g, b)
+
+		local leftX, rightX
+		if fromCx < toCx then leftX, rightX = fromCx, toCx else leftX, rightX = toCx, fromCx end
+		TalentStage_DrawSegment(panel, leftX, toCy - 2, rightX - leftX, 4, r, g, b)
+
+		TalentStage_DrawJoint(panel, fromCx, topY, TS_JOINT_SIZE, r, g, b)
+		-- the horizontal leg is the one that actually arrives at the
+		-- dependent, so the arrow direction follows fromCx/toCx, not topY
+		local dir = 1
+		if toCx < fromCx then dir = -1 end
+		TalentStage_DrawArrowHoriz(panel, toCx, toCy, dir, r, g, b)
+	end
 end
 
 function TalentStage_DrawConnectors(panel)
@@ -820,9 +1093,6 @@ function TalentStage_DrawConnectors(panel)
 		local args = { GetTalentPrereqs(panel.tab, idx) }
 		local n = table.getn(args)
 		if n > 0 then
-			local staged = TalentStage_GetStaged(panel.tab, idx)
-			local effRank = d.rank + staged
-
 			for i = 1, n, 3 do
 				local ptier = args[i]
 				local pcol = args[i + 1]
@@ -832,47 +1102,7 @@ function TalentStage_DrawConnectors(panel)
 					local p = panel.info[pidx]
 					local pEffRank = p.rank + TalentStage_GetStaged(panel.tab, pidx)
 					local met = pEffRank >= 1
-
-					local r, g, b
-					if met then
-						r, g, b = 1, 0.82, 0
-					else
-						r, g, b = 0.45, 0.45, 0.45
-					end
-
-					local fromCx, fromCy = p.px + TS.BUTTON_SIZE / 2, p.py - TS.BUTTON_SIZE / 2
-					local toCx, toCy = d.px + TS.BUTTON_SIZE / 2, d.py - TS.BUTTON_SIZE / 2
-
-					if p.column == d.column then
-						-- straight vertical segment between the two buttons.
-						-- topY is already the correct (higher/less-negative)
-						-- anchor, so the height must be topY - botY, not
-						-- botY - topY: botY is always more negative than
-						-- topY here, so the latter is always negative and
-						-- DrawSegment's h<0 normalization would shift the
-						-- whole segment up by its own length instead of
-						-- fixing it.
-						local topY = p.py - TS.BUTTON_SIZE
-						local botY = d.py
-						TalentStage_DrawSegment(panel, fromCx - 2, topY, 4, topY - botY, r, g, b)
-					elseif p.tier == d.tier then
-						-- straight horizontal segment between the two buttons
-						local leftX, rightX
-						if p.px < d.px then leftX, rightX = p.px, d.px else leftX, rightX = d.px, p.px end
-						TalentStage_DrawSegment(panel, leftX + TS.BUTTON_SIZE, fromCy - 2, rightX - (leftX + TS.BUTTON_SIZE), 4, r, g, b)
-					else
-						-- different tier and column: an L-shaped two segment
-						-- connector (vertical from the prereq, then horizontal
-						-- into the dependent talent's column)
-						-- same sign convention as the vertical branch above:
-						-- topY is the correct anchor, height is topY - toCy.
-						local topY = p.py - TS.BUTTON_SIZE
-						TalentStage_DrawSegment(panel, fromCx - 2, topY, 4, topY - toCy, r, g, b)
-
-						local leftX, rightX
-						if fromCx < toCx then leftX, rightX = fromCx, toCx else leftX, rightX = toCx, fromCx end
-						TalentStage_DrawSegment(panel, leftX, toCy - 2, rightX - leftX, 4, r, g, b)
-					end
+					TalentStage_DrawConnectorEdge(panel, p, d, met)
 				end
 			end
 		end
@@ -881,6 +1111,85 @@ function TalentStage_DrawConnectors(panel)
 	for i = panel.connectorCount + 1, table.getn(panel.connectorTextures) do
 		panel.connectorTextures[i]:Hide()
 	end
+end
+
+--------------------------------------------------------------------------
+-- Synthetic connector test harness: the diagonal (different tier AND
+-- column) branch of TalentStage_DrawConnectorEdge has never been exercised
+-- by real class data (see CLAUDE.md "Open questions" #4 -- the live Hunter
+-- dump's prereqs are all same-column or same-tier). This builds two fake
+-- prereq edges that force that branch, using the exact same edge-drawing
+-- code as the real trees, so the geometry can be checked visually in-game
+-- before trusting/restyling it. Invoke with "/ts testconnectors".
+--------------------------------------------------------------------------
+
+function TalentStage_BuildConnectorTestFrame()
+	if TS.connectorTestFrame then return end
+
+	local f = CreateFrame("Frame", "TalentStageConnectorTestFrame", UIParent)
+	f:SetWidth(320)
+	f:SetHeight(260)
+	f:SetPoint("CENTER", 220, 0)
+	f:SetFrameStrata("DIALOG")
+	f:EnableMouse(true)
+	f:SetMovable(true)
+	f:RegisterForDrag("LeftButton")
+	f:SetScript("OnDragStart", function() this:StartMoving() end)
+	f:SetScript("OnDragStop", function() this:StopMovingOrSizing() end)
+	TalentStage_ApplyPlainBackdrop(f, 0.95)
+	f:Hide()
+
+	local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+	close:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
+	close:SetScript("OnClick", function() f:Hide() end)
+
+	local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	title:SetPoint("TOP", f, "TOP", 0, -12)
+	title:SetText("Connector test: diagonal L-branch (left=met, right=unmet)")
+
+	-- bare table with just the fields TalentStage_DrawConnectorEdge /
+	-- DrawSegment / GetConnectorTexture actually touch -- none of this is
+	-- real talent data, it's a fixture
+	local panel = {
+		connectorLayer = CreateFrame("Frame", nil, f),
+		connectorTextures = {},
+		connectorCount = 0,
+	}
+	panel.connectorLayer:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -34)
+	panel.connectorLayer:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
+
+	-- tier/column are required here, not cosmetic: TalentStage_DrawConnectorEdge
+	-- branches on p.column==d.column / p.tier==d.tier to pick straight-vs-L
+	-- rendering. Omitting them made both nil, and nil==nil is true in Lua --
+	-- so an earlier version of this fixture silently fell into the
+	-- same-column branch instead of the diagonal one it was built to test.
+	local function fakeNode(px, py, tier, column, met)
+		local btn = CreateFrame("Frame", nil, f)
+		btn:SetWidth(TS.BUTTON_SIZE)
+		btn:SetHeight(TS.BUTTON_SIZE)
+		btn:SetPoint("TOPLEFT", panel.connectorLayer, "TOPLEFT", px, py)
+		local bg = btn:CreateTexture(nil, "ARTWORK")
+		bg:SetAllPoints(btn)
+		bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+		if met then
+			bg:SetVertexColor(TS.COLOR.gold[1], TS.COLOR.gold[2], TS.COLOR.gold[3])
+		else
+			bg:SetVertexColor(TS.COLOR.lockedIcon[1], TS.COLOR.lockedIcon[2], TS.COLOR.lockedIcon[3])
+		end
+		return { px = px, py = py, tier = tier, column = column }
+	end
+
+	-- case A: minimal diagonal, 1 tier + 1 column gap, met
+	local a1 = fakeNode(20, -10, 1, 1, true)
+	local a2 = fakeNode(20 + TS.COL_SPACING, -10 - TS.TIER_SPACING, 2, 2, true)
+	TalentStage_DrawConnectorEdge(panel, a1, a2, true)
+
+	-- case B: worse diagonal, 2 tiers + 2 columns gap, unmet
+	local b1 = fakeNode(170, -10, 1, 1, false)
+	local b2 = fakeNode(170 + 2 * TS.COL_SPACING, -10 - 2 * TS.TIER_SPACING, 3, 3, false)
+	TalentStage_DrawConnectorEdge(panel, b1, b2, false)
+
+	TS.connectorTestFrame = f
 end
 
 --------------------------------------------------------------------------
@@ -1270,7 +1579,10 @@ SlashCmdList["TALENTSTAGE"] = function(msg)
 	msg = string.lower(msg or "")
 	if msg == "dump" then
 		TalentStage_RunDump()
+	elseif msg == "testconnectors" then
+		TalentStage_BuildConnectorTestFrame()
+		TS.connectorTestFrame:Show()
 	else
-		DEFAULT_CHAT_FRAME:AddMessage("TalentStage: /ts dump - dump live GetTalentInfo/GetTalentPrereqs data to a copy box and SavedVariables.")
+		DEFAULT_CHAT_FRAME:AddMessage("TalentStage: /ts dump - dump live GetTalentInfo/GetTalentPrereqs data to a copy box and SavedVariables. /ts testconnectors - show a synthetic diagonal-connector test panel.")
 	end
 end

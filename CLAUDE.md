@@ -90,6 +90,27 @@ stage-then-confirm ledger bar at the bottom. Talent names and point totals in
 that mockup are placeholders — real data comes from the `GetTalentInfo` calls
 above, not hardcoded values.
 
+Second mockup pass: `rogue-talent-redesign-v2.html` (repo root, HTML/CSS/JS
+demo, Rogue talent data is a hardcoded placeholder). Reference for: overall
+panel chrome (titlebar with reset link + close button), three-tree
+side-by-side layout/spacing, talent grid/tile styling per state
+(locked/available/staged/confirmed/maxed), connector line treatment (gold met
+/ gray unmet, small circle joints), the always-visible Import/Export row
+above the trees, and the ledger-bar-becomes-progress-bar swap during a
+multi-point confirm. This is look-and-feel only — it does not cover the
+lock-in bloom/spark or row lock/unlock flash (already implemented, see
+`TalentStage_TalentButton_OnUpdate`), which this redesign pass only retunes
+cosmetically, not rebuilds.
+
+**Decision (2026-08-22): Import/Export row + settings gear.** Keep the
+mockup's Import/Export row as a separate always-visible row (not folded into
+the settings-gear popup) — explicit user call, since the sandbox-mode gear
+button is expected to go away later anyway. For this redesign pass: hide the
+gear button (dev-only sandbox toggle stays in the code, just not shown/
+reachable); build the Import/Export row's box + buttons but wire them to
+no-ops — the actual import/export codec doesn't exist yet, that's a separate
+future task.
+
 ## Open questions — RESOLVED (read from source 2026-08-22)
 
 ### 1. Default talent frame source
@@ -331,6 +352,26 @@ Not yet done: pfUI/ElvUI skin integration (phase 1 explicitly excludes it),
 verified in-game (no confirmed screenshot/playtest yet — do that before
 layering skinning on top), and the OnUpdate-driven "staged" glow pulse only
 proves out visually once tested live.
+
+### Phase 2 — visual/UX redesign pass (started 2026-08-22)
+Look-and-feel only, against the `rogue-talent-redesign-v2.html` mockup (see
+Design reference) — no change to staging/prereq/confirm-queue logic. Broken
+into independently testable passes, in order:
+
+1. Chrome/layout — panel/titlebar/tile-state restyle. Sizing stays driven by
+   live `GetNumTalents`/tier/column data, not the mockup's fixed grid.
+2. Connectors — build a synthetic fixture exercising the diagonal
+   (different-tier-AND-different-column) L-branch in
+   `TalentStage_DrawConnectors` *before* restyling it, since no real class
+   dump has ever hit that path — then reskin line/joint treatment.
+3. Staged/confirmed tile state colors, reusing the existing `btn.glow`/
+   `stagedGlow` mechanism.
+4. Ledger → progress-bar swap reskin, reusing existing
+   `TS.processing`/`queueDone`/`queueTotal` logic untouched.
+5. Lock-in bloom/spark + row flash — cosmetic retune only (colors/timing) of
+   the already-implemented `TalentStage_TalentButton_OnUpdate` logic.
+6. Import/Export row (built, wired to no-ops) + hide the settings gear — see
+   the Design reference decision above.
 
 ## Notes changing the approach
 - Target `Blizzard_TalentUI`'s namespace/frames, not FrameXML's — same names
