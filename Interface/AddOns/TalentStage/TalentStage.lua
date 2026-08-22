@@ -13,7 +13,8 @@ TS.BUTTON_SIZE     = 32
 TS.COL_SPACING     = 58
 TS.TIER_SPACING    = 58
 TS.PANEL_PAD       = 20
-TS.HEADER_HEIGHT   = 34
+TS.PANEL_BOTTOM_PAD = 10
+TS.HEADER_HEIGHT   = 54
 TS.TREE_GAP        = 24
 TS.MARGIN          = 16
 TS.TITLE_HEIGHT    = 36
@@ -54,6 +55,21 @@ TS.nextAllowed = 0
 TS.inFlight = nil       -- {tab=, idx=} of the queue entry currently awaiting
                         -- server confirmation, so its staged point stays
                         -- displayed until it's actually landed
+TS.confirmedButtons = {} -- confirmedButtons[tab][idx] = true; buttons settled
+                        -- during the current confirm run, flashed together
+                        -- (with one sound) once the whole queue drains
+TS.queueTotal = 0      -- size of the current confirm run, for the "Applying
+                        -- X of Y" ledger progress text
+TS.queueDone = 0        -- points settled so far in the current confirm run
+
+-- Dev/sandbox mode: confirm runs go through the exact same queue/settle/
+-- flash/progress-bar code path as a real confirm, but never call LearnTalent
+-- and never touch real character state, so the UI can be tested without
+-- spending (or paying to respec) real talent points. sandboxConfirmed is a
+-- purely cosmetic overlay of "confirmed" points layered on top of the real
+-- GetTalentInfo rank, mirroring how staged points are already layered on.
+TS.sandboxMode = false
+TS.sandboxConfirmed = {} -- sandboxConfirmed[tab][idx] = fake-confirmed rank count
 TS.CONFIRM_FLASH_DURATION = 0.5
 
 --------------------------------------------------------------------------
@@ -177,7 +193,7 @@ function TalentStage_BuildUI()
 		end
 
 		local panelWidth = maxCol * TS.COL_SPACING + TS.PANEL_PAD
-		local panelHeight = TS.HEADER_HEIGHT + maxTier * TS.TIER_SPACING + TS.PANEL_PAD
+		local panelHeight = TS.HEADER_HEIGHT + maxTier * TS.TIER_SPACING + TS.PANEL_BOTTOM_PAD
 
 		local panel = CreateFrame("Frame", "TalentStagePanel"..tab, TalentStageFrame)
 		panel:SetWidth(panelWidth)
@@ -191,6 +207,10 @@ function TalentStage_BuildUI()
 		local header = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 		header:SetPoint("TOP", panel, "TOP", 0, -6)
 		panel.header = header
+
+		local pointsText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		pointsText:SetPoint("TOP", header, "BOTTOM", 0, -2)
+		panel.pointsText = pointsText
 
 		-- connector layer sits behind the buttons, one frame per tree so we
 		-- can wipe/redraw it without touching sibling trees.
@@ -233,6 +253,18 @@ function TalentStage_BuildUI()
 				glow:SetAlpha(0)
 				btn.glow = glow
 
+				-- lock-in "swirl": a small spark that orbits the button fast
+				-- (vanilla has no texture rotation, so this fakes it by moving
+				-- the anchor point around a circle each frame) and fades out
+				local swirl = btn:CreateTexture(nil, "OVERLAY")
+				swirl:SetTexture("Interface\\Buttons\\WHITE8X8")
+				swirl:SetWidth(6)
+				swirl:SetHeight(6)
+				swirl:SetBlendMode("ADD")
+				swirl:SetVertexColor(1, 0.85, 0.3)
+				swirl:SetAlpha(0)
+				btn.swirl = swirl
+
 				local rankText = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
 				rankText:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -2, 2)
 				btn.rankText = rankText
@@ -266,7 +298,102 @@ function TalentStage_BuildUI()
 	title:SetText("Talents")
 	TalentStageFrame.title = title
 
+	local sandboxLabel = TalentStageFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	sandboxLabel:SetPoint("TOP", title, "BOTTOM", 0, -2)
+	sandboxLabel:SetTextColor(1, 0.3, 0.3)
+	sandboxLabel:SetText("SANDBOX MODE - not saved to character")
+	sandboxLabel:Hide()
+	TS.sandboxLabel = sandboxLabel
+
 	TalentStage_BuildLedger()
+	TalentStage_BuildSettings()
+end
+
+--------------------------------------------------------------------------
+-- Settings: currently just the dev sandbox toggle. The gear icon/panel is
+-- deliberately generic so future real settings (theme, etc, see CLAUDE.md
+-- backlog) can be added as more rows without restructuring this.
+--------------------------------------------------------------------------
+
+function TalentStage_BuildSettings()
+	local gear = CreateFrame("Button", "TalentStageSettingsButton", TalentStageFrame)
+	gear:SetWidth(22)
+	gear:SetHeight(22)
+	gear:SetPoint("TOPLEFT", TalentStageFrame, "TOPLEFT", 6, -6)
+	local gearTex = gear:CreateTexture(nil, "ARTWORK")
+	gearTex:SetAllPoints(gear)
+	-- a real trade-skill icon rather than "Interface\Buttons\UI-OptionsButton":
+	-- that path doesn't exist in the 1.12 client (renders blank), this one is
+	-- guaranteed present and reads as a gear/cog at a glance
+	gearTex:SetTexture("Interface\\Icons\\Trade_Engineering")
+	gearTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+	gear:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+	gear:SetScript("OnClick", TalentStage_ToggleSettingsPanel)
+
+	-- parented to UIParent (not TalentStageFrame) and given its own toplevel
+	-- strata so its size/position are never constrained by the talent frame's
+	-- own (dynamic, often narrower-than-220) bounds
+	local panel = CreateFrame("Frame", "TalentStageSettingsPanel", UIParent)
+	panel:SetWidth(210)
+	panel:SetHeight(96)
+	panel:SetPoint("TOPLEFT", gear, "BOTTOMLEFT", -4, -6)
+	panel:SetFrameStrata("DIALOG")
+	panel:SetToplevel(true)
+	TalentStage_ApplyPlainBackdrop(panel, 0.95)
+	panel:Hide()
+	TS.settingsPanel = panel
+
+	local heading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	heading:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -10)
+	heading:SetText("Settings")
+
+	local sandboxCheck = CreateFrame("CheckButton", "TalentStageSandboxCheck", panel, "UICheckButtonTemplate")
+	sandboxCheck:SetPoint("TOPLEFT", heading, "BOTTOMLEFT", -2, -8)
+	getglobal("TalentStageSandboxCheckText"):SetText("Sandbox mode (dev)")
+	sandboxCheck:SetScript("OnClick", TalentStage_ToggleSandboxMode)
+	TS.sandboxCheck = sandboxCheck
+
+	local resetBtn = CreateFrame("Button", "TalentStageSandboxResetButton", panel, "UIPanelButtonTemplate")
+	resetBtn:SetWidth(150)
+	resetBtn:SetHeight(22)
+	resetBtn:SetPoint("TOP", sandboxCheck, "BOTTOM", 2, -16)
+	resetBtn:SetText("Reset sandbox talents")
+	resetBtn:SetScript("OnClick", TalentStage_ResetSandbox)
+	TS.sandboxResetButton = resetBtn
+end
+
+function TalentStage_ToggleSettingsPanel()
+	if TS.settingsPanel:IsVisible() then
+		TS.settingsPanel:Hide()
+	else
+		TS.settingsPanel:Show()
+	end
+end
+
+function TalentStage_ToggleSandboxMode()
+	if TS.processing then
+		-- don't let the mode flip mid-confirm-run, the in-flight entries
+		-- were queued under the old mode
+		this:SetChecked(not this:GetChecked())
+		return
+	end
+	TS.sandboxMode = this:GetChecked() and true or false
+	-- entering or leaving sandbox mode always starts from a clean fake
+	-- state -- there's no meaningful way to carry fake-confirmed points
+	-- across the boundary with real character state
+	TalentStage_ResetSandbox()
+end
+
+function TalentStage_ResetSandbox()
+	if TS.processing then return end
+	TS.sandboxConfirmed = {}
+	-- also drop any staged-but-unconfirmed picks: "reset" means a fully
+	-- blank tree, not just undoing confirmed fake points
+	TS.staged = {}
+	if TS.sandboxLabel then
+		if TS.sandboxMode then TS.sandboxLabel:Show() else TS.sandboxLabel:Hide() end
+	end
+	TalentStage_Refresh()
 end
 
 function TalentStage_BuildLedger()
@@ -279,6 +406,20 @@ function TalentStage_BuildLedger()
 	local text = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	text:SetPoint("LEFT", bar, "LEFT", 12, 0)
 	TS.ledgerText = text
+
+	-- thin fill strip across the bottom of the ledger bar, only shown while
+	-- a confirm queue is draining, to give visible feedback during the
+	-- ~1s-per-point LearnTalent pacing delay
+	local progressBar = CreateFrame("StatusBar", "TalentStageProgressBar", bar)
+	progressBar:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 2, 2)
+	progressBar:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", -2, 2)
+	progressBar:SetHeight(4)
+	progressBar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+	progressBar:SetStatusBarColor(0.1, 0.8, 0.1)
+	progressBar:SetMinMaxValues(0, 1)
+	progressBar:SetValue(0)
+	progressBar:Hide()
+	TS.progressBar = progressBar
 
 	local confirmBtn = CreateFrame("Button", "TalentStageConfirmButton", bar, "UIPanelButtonTemplate")
 	confirmBtn:SetWidth(90)
@@ -307,6 +448,32 @@ function TalentStage_GetStaged(tab, idx)
 	return list[idx] or 0
 end
 
+function TalentStage_GetSandboxConfirmed(tab, idx)
+	local list = TS.sandboxConfirmed[tab]
+	if not list then return 0 end
+	return list[idx] or 0
+end
+
+-- Sandbox mode simulates testing from a blank tree, not your real character's
+-- invested points: the real rank/points-spent must never leak into any
+-- effective-rank math while it's on, or tier gates / prereqs / the available-
+-- points cap would still be constrained by talents you actually have.
+function TalentStage_BaseRank(rank)
+	if TS.sandboxMode then return 0 end
+	return rank or 0
+end
+
+function TalentStage_GetAvailablePoints()
+	if TS.sandboxMode then return 999 end
+	return UnitCharacterPoints("player")
+end
+
+-- effRank for a talent node: real rank (unless sandboxed away) + staged +
+-- sandbox-confirmed. Central so Stage/Refresh/PrereqsMet never drift.
+function TalentStage_EffectiveRank(tab, idx, rank)
+	return TalentStage_BaseRank(rank) + TalentStage_GetStaged(tab, idx) + TalentStage_GetSandboxConfirmed(tab, idx)
+end
+
 function TalentStage_GetTotalStaged()
 	local total = 0
 	for tab, list in pairs(TS.staged) do
@@ -318,7 +485,11 @@ function TalentStage_GetTotalStaged()
 end
 
 function TalentStage_GetEffectiveSpent(tab)
-	local name, texture, pointsSpent = GetTalentTabInfo(tab)
+	local pointsSpent = 0
+	if not TS.sandboxMode then
+		local name, texture, realSpent = GetTalentTabInfo(tab)
+		pointsSpent = realSpent or 0
+	end
 	local stagedTotal = 0
 	local list = TS.staged[tab]
 	if list then
@@ -326,7 +497,14 @@ function TalentStage_GetEffectiveSpent(tab)
 			stagedTotal = stagedTotal + n
 		end
 	end
-	return (pointsSpent or 0) + stagedTotal
+	local sandboxTotal = 0
+	local sList = TS.sandboxConfirmed[tab]
+	if sList then
+		for idx, n in pairs(sList) do
+			sandboxTotal = sandboxTotal + n
+		end
+	end
+	return pointsSpent + stagedTotal + sandboxTotal
 end
 
 function TalentStage_IsTierUnlocked(tab, tier)
@@ -352,7 +530,7 @@ function TalentStage_PrereqsMet(tab, idx)
 		local pidx = prow and prow[pcol]
 		if pidx then
 			local d = panel.info[pidx]
-			local effRank = (d.rank or 0) + TalentStage_GetStaged(tab, pidx)
+			local effRank = TalentStage_EffectiveRank(tab, pidx, d.rank)
 			if effRank < 1 then
 				return false
 			end
@@ -373,23 +551,38 @@ function TalentStage_SettleInFlight()
 	local e = TS.inFlight
 	if not e then return end
 
-	local _, _, _, _, rank = GetTalentInfo(e.tab, e.idx)
-	if not rank or rank <= e.priorRank then return end
+	if e.sandbox then
+		-- no server round-trip to wait on: settle once the same fallback
+		-- delay used for real confirms has elapsed, so the sandbox run
+		-- paces itself identically to a real one
+		if GetTime() < TS.nextAllowed then return end
+	else
+		local _, _, _, _, rank = GetTalentInfo(e.tab, e.idx)
+		if not rank or rank <= e.priorRank then return end
+	end
 
 	local staged = TalentStage_GetStaged(e.tab, e.idx)
 	if staged > 0 then
 		TS.staged[e.tab][e.idx] = staged - 1
 	end
-	TS.inFlight = nil
-
-	local panel = TS.panels[e.tab]
-	local btn = panel and panel.buttons[e.idx]
-	if btn then
-		btn.confirmFlashElapsed = 0
-		-- "flag defended" fanfare, distinct from the plain checkbox click
-		-- used while staging: this is a point actually locking in.
-		PlaySoundFile("Sound\\Spells\\PVPFlagReturned.wav")
+	if e.sandbox then
+		if not TS.sandboxConfirmed[e.tab] then
+			TS.sandboxConfirmed[e.tab] = {}
+		end
+		TS.sandboxConfirmed[e.tab][e.idx] = TalentStage_GetSandboxConfirmed(e.tab, e.idx) + 1
 	end
+	TS.inFlight = nil
+	TS.queueDone = TS.queueDone + 1
+
+	-- Don't flash/play the fanfare per point: a multi-point confirm run
+	-- (one talent at 5/5, or several talents at once) fires this once per
+	-- LearnTalent call. Record the button and defer the actual flash+sound
+	-- until TalentStage_ProcessQueue drains the whole run, so every button
+	-- touched this run flashes together with a single sound.
+	if not TS.confirmedButtons[e.tab] then
+		TS.confirmedButtons[e.tab] = {}
+	end
+	TS.confirmedButtons[e.tab][e.idx] = true
 end
 
 function TalentStage_Refresh()
@@ -398,16 +591,37 @@ function TalentStage_Refresh()
 	TalentStage_SettleInFlight()
 
 	for tab, panel in pairs(TS.panels) do
-		local name = GetTalentTabInfo(tab)
+		local name, texture, pointsSpent = GetTalentTabInfo(tab)
 		panel.header:SetText(name or "")
+
+		local stagedInTab = 0
+		local list = TS.staged[tab]
+		if list then
+			for _, n in pairs(list) do
+				stagedInTab = stagedInTab + n
+			end
+		end
+		pointsSpent = TS.sandboxMode and 0 or (pointsSpent or 0)
+		local sList = TS.sandboxConfirmed[tab]
+		if sList then
+			for _, n in pairs(sList) do
+				pointsSpent = pointsSpent + n
+			end
+		end
+		if stagedInTab > 0 then
+			panel.pointsText:SetText(pointsSpent.." +"..stagedInTab.." points")
+			panel.pointsText:SetTextColor(1, 0.82, 0)
+		else
+			panel.pointsText:SetText(pointsSpent.." points")
+			panel.pointsText:SetTextColor(0.8, 0.8, 0.8)
+		end
 
 		for idx, btn in pairs(panel.buttons) do
 			local realName, icon, tier, column, rank, maxRank = GetTalentInfo(tab, idx)
 			local d = panel.info[idx]
 			d.rank, d.maxRank = rank, maxRank
 
-			local staged = TalentStage_GetStaged(tab, idx)
-			local effRank = rank + staged
+			local effRank = TalentStage_EffectiveRank(tab, idx, rank)
 			btn.rankText:SetText(effRank .. "/" .. maxRank)
 
 			local tierUnlocked = TalentStage_IsTierUnlocked(tab, tier)
@@ -426,7 +640,7 @@ function TalentStage_Refresh()
 				btn.rankText:SetTextColor(0.6, 0.6, 0.6)
 			end
 
-			btn.stagedGlow = staged > 0
+			btn.stagedGlow = TalentStage_GetStaged(tab, idx) > 0
 			if not btn.stagedGlow and not btn.confirmFlashElapsed then
 				btn.glow:SetAlpha(0)
 			end
@@ -440,8 +654,21 @@ end
 
 function TalentStage_UpdateLedger()
 	local total = TalentStage_GetTotalStaged()
-	local available = UnitCharacterPoints("player")
-	TS.ledgerText:SetText("Staged: "..total.."   Unspent: "..(available - total).." / "..available)
+	local available = TalentStage_GetAvailablePoints()
+
+	if TS.processing then
+		-- +1: the in-flight point counts as "being applied", not "done" yet
+		local applying = TS.queueDone + 1
+		if applying > TS.queueTotal then applying = TS.queueTotal end
+		TS.ledgerText:SetText("Applying "..applying.." of "..TS.queueTotal.."...")
+
+		TS.progressBar:SetMinMaxValues(0, TS.queueTotal)
+		TS.progressBar:SetValue(applying)
+		TS.progressBar:Show()
+	else
+		TS.ledgerText:SetText("Staged: "..total.."   Unspent: "..(available - total).." / "..available)
+		TS.progressBar:Hide()
+	end
 
 	if total > 0 and not TS.processing then
 		TS.confirmButton:Enable()
@@ -590,8 +817,32 @@ function TalentStage_TalentButton_OnUpdate()
 		if t >= 1 then
 			this.confirmFlashElapsed = nil
 			this.glow:SetAlpha(this.stagedGlow and 0.35 or 0)
+			this.glow:SetVertexColor(1, 1, 1)
+			this.glow:ClearAllPoints()
+			this.glow:SetPoint("TOPLEFT", this, "TOPLEFT", -4, 4)
+			this.glow:SetPoint("BOTTOMRIGHT", this, "BOTTOMRIGHT", 4, -4)
+			this.swirl:SetAlpha(0)
 		else
 			this.glow:SetAlpha(1 - t)
+
+			-- bloom outward 20% of the button's own size at the moment it
+			-- locks in, then shrink back down to the normal 4px border as
+			-- the flash decays, for a punchier "lock-in" pop
+			local bloom = 4 + (this:GetWidth() * 0.2 * (1 - t))
+			this.glow:ClearAllPoints()
+			this.glow:SetPoint("TOPLEFT", this, "TOPLEFT", -bloom, bloom)
+			this.glow:SetPoint("BOTTOMRIGHT", this, "BOTTOMRIGHT", bloom, -bloom)
+
+			-- gold-hot at the peak, cooling back to plain white as it fades
+			this.glow:SetVertexColor(1, 0.85 + 0.15 * t, 0.5 + 0.5 * t)
+
+			-- swirl: a spark whizzing several times around the button's
+			-- edge, fast at the start and fading out as the flash decays
+			local radius = (this:GetWidth() / 2) + 6
+			local angle = t * 4 * 2 * math.pi -- ~4 full laps over the flash
+			this.swirl:ClearAllPoints()
+			this.swirl:SetPoint("CENTER", this, "CENTER", radius * math.cos(angle), radius * math.sin(angle))
+			this.swirl:SetAlpha(1 - t)
 		end
 		return
 	end
@@ -609,13 +860,13 @@ function TalentStage_Stage(tab, idx)
 	local panel = TS.panels[tab]
 	local d = panel.info[idx]
 	local staged = TalentStage_GetStaged(tab, idx)
-	local effRank = d.rank + staged
+	local effRank = TalentStage_EffectiveRank(tab, idx, d.rank)
 
 	if effRank >= d.maxRank then return end
 	if not TalentStage_IsTierUnlocked(tab, d.tier) then return end
 	if not TalentStage_PrereqsMet(tab, idx) then return end
 
-	local available = UnitCharacterPoints("player")
+	local available = TalentStage_GetAvailablePoints()
 	if TalentStage_GetTotalStaged() >= available then return end
 
 	if not TS.staged[tab] then TS.staged[tab] = {} end
@@ -664,6 +915,9 @@ function TalentStage_ConfirmStaged()
 
 	if table.getn(TS.queue) == 0 then return end
 
+	TS.queueTotal = table.getn(TS.queue)
+	TS.queueDone = 0
+
 	-- deliberately NOT wiping TS.staged here: each entry's staged point stays
 	-- displayed (effRank = realRank + staged) until TalentStage_ProcessQueue
 	-- decrements it at the moment that specific point actually confirms, so
@@ -682,6 +936,27 @@ function TalentStage_ProcessQueue()
 
 	if table.getn(TS.queue) == 0 then
 		TS.processing = false
+
+		local flashedAny = false
+		for tab, idxs in pairs(TS.confirmedButtons) do
+			local panel = TS.panels[tab]
+			for idx in pairs(idxs) do
+				local btn = panel and panel.buttons[idx]
+				if btn then
+					btn.confirmFlashElapsed = 0
+					flashedAny = true
+				end
+			end
+		end
+		TS.confirmedButtons = {}
+		TS.queueTotal = 0
+		TS.queueDone = 0
+		if flashedAny then
+			-- "flag defended" fanfare, distinct from the plain checkbox click
+			-- used while staging: this is the confirm run actually locking in.
+			PlaySoundFile("Sound\\Spells\\PVPFlagReturned.wav")
+		end
+
 		if TalentStageFrame:IsVisible() then
 			-- full grid redraw, not just the ledger: this is what has to
 			-- reflect the newly-learned rank once the queue drains, and it
@@ -697,9 +972,15 @@ function TalentStage_ProcessQueue()
 	TS.processing = true
 	local entry = TS.queue[1]
 	table.remove(TS.queue, 1)
-	local _, _, _, _, priorRank = GetTalentInfo(entry.tab, entry.idx)
-	TS.inFlight = { tab = entry.tab, idx = entry.idx, priorRank = priorRank or 0 }
-	LearnTalent(entry.tab, entry.idx)
+	if TS.sandboxMode then
+		-- fake the server round-trip entirely: no LearnTalent call, no real
+		-- rank read, so nothing about the character actually changes
+		TS.inFlight = { tab = entry.tab, idx = entry.idx, sandbox = true }
+	else
+		local _, _, _, _, priorRank = GetTalentInfo(entry.tab, entry.idx)
+		TS.inFlight = { tab = entry.tab, idx = entry.idx, priorRank = priorRank or 0 }
+		LearnTalent(entry.tab, entry.idx)
+	end
 	TS.nextAllowed = GetTime() + TS.QUEUE_FALLBACK_DELAY
 end
 
