@@ -1,0 +1,8 @@
+## Interface: 11200
+## Title: TalentStage
+## Notes: Standalone redesigned talent UI - phase 1 (all three trees visible, stage-then-confirm). No pfUI/ElvUI dependency.
+## Author: Ross Anderson
+## Version: 0.1
+## SavedVariables: TalentStageDumpDB
+
+TalentStage.xml
