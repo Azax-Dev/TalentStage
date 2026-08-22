@@ -12,13 +12,13 @@ local TS = TalentStage
 TS.BUTTON_SIZE     = 32
 TS.COL_SPACING     = 58
 TS.TIER_SPACING    = 58
-TS.PANEL_PAD       = 20
-TS.PANEL_BOTTOM_PAD = 10
-TS.HEADER_HEIGHT   = 54
-TS.TREE_GAP        = 24
+TS.PANEL_PAD       = 24
+TS.PANEL_BOTTOM_PAD = 18
+TS.HEADER_HEIGHT   = 62
+TS.TREE_GAP        = 28
 TS.MARGIN          = 16
-TS.TITLE_HEIGHT    = 36
-TS.LEDGER_HEIGHT   = 56
+TS.TITLE_HEIGHT    = 40
+TS.LEDGER_HEIGHT   = 68
 TS.QUEUE_FALLBACK_DELAY = 1.0 -- seconds; LearnTalent has a short server-side
                                -- delay between calls, this is a safety net in
                                -- case TALENT_UPDATE never fires for a call.
@@ -205,11 +205,19 @@ function TalentStage_BuildUI()
 		panel:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
 
 		local header = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-		header:SetPoint("TOP", panel, "TOP", 0, -6)
+		header:SetPoint("TOP", panel, "TOP", 0, -8)
+		do
+			local fontPath, fontSize, fontFlags = header:GetFont()
+			header:SetFont(fontPath, fontSize + 5, fontFlags)
+		end
 		panel.header = header
 
 		local pointsText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-		pointsText:SetPoint("TOP", header, "BOTTOM", 0, -2)
+		pointsText:SetPoint("TOP", header, "BOTTOM", 0, -3)
+		do
+			local fontPath, fontSize, fontFlags = pointsText:GetFont()
+			pointsText:SetFont(fontPath, fontSize + 3, fontFlags)
+		end
 		panel.pointsText = pointsText
 
 		-- connector layer sits behind the buttons, one frame per tree so we
@@ -258,8 +266,8 @@ function TalentStage_BuildUI()
 				-- the anchor point around a circle each frame) and fades out
 				local swirl = btn:CreateTexture(nil, "OVERLAY")
 				swirl:SetTexture("Interface\\Buttons\\WHITE8X8")
-				swirl:SetWidth(6)
-				swirl:SetHeight(6)
+				swirl:SetWidth(11)
+				swirl:SetHeight(11)
 				swirl:SetBlendMode("ADD")
 				swirl:SetVertexColor(1, 0.85, 0.3)
 				swirl:SetAlpha(0)
@@ -287,8 +295,12 @@ function TalentStage_BuildUI()
 		if panelHeight > maxPanelHeight then maxPanelHeight = panelHeight end
 	end
 
+	-- totalWidth carries one trailing TS.TREE_GAP added after the last panel
+	-- (the loop above adds it unconditionally each iteration); drop it here
+	-- so the frame ends at the last tree plus a plain right-side margin,
+	-- instead of a full tree-gap-sized gap plus that margin stacked together.
 	local totalHeight = TS.TITLE_HEIGHT + maxPanelHeight + TS.LEDGER_HEIGHT
-	TalentStageFrame:SetWidth(totalWidth + TS.MARGIN)
+	TalentStageFrame:SetWidth(totalWidth - TS.TREE_GAP + TS.MARGIN)
 	TalentStageFrame:SetHeight(totalHeight)
 
 	TalentStage_ApplyPlainBackdrop(TalentStageFrame, 0.9)
@@ -407,24 +419,10 @@ function TalentStage_BuildLedger()
 	text:SetPoint("LEFT", bar, "LEFT", 12, 0)
 	TS.ledgerText = text
 
-	-- thin fill strip across the bottom of the ledger bar, only shown while
-	-- a confirm queue is draining, to give visible feedback during the
-	-- ~1s-per-point LearnTalent pacing delay
-	local progressBar = CreateFrame("StatusBar", "TalentStageProgressBar", bar)
-	progressBar:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 2, 2)
-	progressBar:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", -2, 2)
-	progressBar:SetHeight(4)
-	progressBar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
-	progressBar:SetStatusBarColor(0.1, 0.8, 0.1)
-	progressBar:SetMinMaxValues(0, 1)
-	progressBar:SetValue(0)
-	progressBar:Hide()
-	TS.progressBar = progressBar
-
 	local confirmBtn = CreateFrame("Button", "TalentStageConfirmButton", bar, "UIPanelButtonTemplate")
 	confirmBtn:SetWidth(90)
 	confirmBtn:SetHeight(22)
-	confirmBtn:SetPoint("RIGHT", bar, "RIGHT", -10, 0)
+	confirmBtn:SetPoint("RIGHT", bar, "RIGHT", -16, 0)
 	confirmBtn:SetText("Confirm")
 	confirmBtn:SetScript("OnClick", TalentStage_ConfirmStaged)
 	TS.confirmButton = confirmBtn
@@ -436,6 +434,35 @@ function TalentStage_BuildLedger()
 	clearBtn:SetText("Clear")
 	clearBtn:SetScript("OnClick", TalentStage_ClearStaged)
 	TS.clearButton = clearBtn
+
+	-- fills the whole ledger bar (the same box that holds the staged/unspent
+	-- text and the Clear/Confirm buttons) while a confirm queue is draining;
+	-- Clear/Confirm are hidden for that span (they're inert anyway,
+	-- TS.processing blocks their handlers) so the entire box reads as one
+	-- active progress bar instead of text plus two dead buttons.
+	--
+	-- Plain texture regions owned directly by `bar`, not a separate child
+	-- frame: a child frame always draws above its parent's own regions
+	-- regardless of creation order, which would bury ledgerText (owned by
+	-- `bar`) under the fill. Regions on the same frame instead layer by their
+	-- draw-layer (BACKGROUND < BORDER < ARTWORK < OVERLAY), so keeping the
+	-- fill at BORDER and the text at OVERLAY keeps the text on top reliably.
+	local progressBg = bar:CreateTexture(nil, "BACKGROUND")
+	progressBg:SetPoint("TOPLEFT", bar, "TOPLEFT", 2, -2)
+	progressBg:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", -2, 2)
+	progressBg:SetTexture(0, 0, 0, 0.5)
+	progressBg:Hide()
+	TS.progressBg = progressBg
+
+	local progressFill = bar:CreateTexture(nil, "BORDER")
+	progressFill:SetPoint("TOPLEFT", bar, "TOPLEFT", 2, -2)
+	progressFill:SetHeight(TS.LEDGER_HEIGHT - TS.MARGIN - 4)
+	progressFill:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
+	progressFill:SetVertexColor(0.1, 0.8, 0.1)
+	progressFill:SetWidth(1)
+	progressFill:Hide()
+	TS.progressFill = progressFill
+	TS.progressBarWidth = function() return bar:GetWidth() - 4 end
 end
 
 --------------------------------------------------------------------------
@@ -662,12 +689,25 @@ function TalentStage_UpdateLedger()
 		if applying > TS.queueTotal then applying = TS.queueTotal end
 		TS.ledgerText:SetText("Applying "..applying.." of "..TS.queueTotal.."...")
 
-		TS.progressBar:SetMinMaxValues(0, TS.queueTotal)
-		TS.progressBar:SetValue(applying)
-		TS.progressBar:Show()
+		local frac = applying / TS.queueTotal
+		local fullWidth = TS.progressBarWidth()
+		local w = fullWidth * frac
+		if w < 1 then w = 1 end
+		TS.progressFill:SetWidth(w)
+
+		-- progress bar fills the whole ledger box while a confirm run is
+		-- draining, so that space stays doing something useful instead of
+		-- showing two disabled buttons
+		TS.confirmButton:Hide()
+		TS.clearButton:Hide()
+		TS.progressBg:Show()
+		TS.progressFill:Show()
 	else
 		TS.ledgerText:SetText("Staged: "..total.."   Unspent: "..(available - total).." / "..available)
-		TS.progressBar:Hide()
+		TS.progressBg:Hide()
+		TS.progressFill:Hide()
+		TS.confirmButton:Show()
+		TS.clearButton:Show()
 	end
 
 	if total > 0 and not TS.processing then
@@ -836,10 +876,14 @@ function TalentStage_TalentButton_OnUpdate()
 			-- gold-hot at the peak, cooling back to plain white as it fades
 			this.glow:SetVertexColor(1, 0.85 + 0.15 * t, 0.5 + 0.5 * t)
 
-			-- swirl: a spark whizzing several times around the button's
-			-- edge, fast at the start and fading out as the flash decays
-			local radius = (this:GetWidth() / 2) + 6
-			local angle = t * 4 * 2 * math.pi -- ~4 full laps over the flash
+			-- swirl: a spark orbiting the button's edge, fading out as the
+			-- flash decays. Eased (ease-out) angular speed instead of a
+			-- constant one: fast on the outer laps, slowing into the finish,
+			-- which reads far smoother than a constant-speed spin at the
+			-- variable, often-low frame rates this client actually renders at.
+			local radius = (this:GetWidth() / 2) + 12
+			local eased = 1 - (1 - t) * (1 - t)
+			local angle = eased * 2.5 * 2 * math.pi -- ~2.5 laps over the flash
 			this.swirl:ClearAllPoints()
 			this.swirl:SetPoint("CENTER", this, "CENTER", radius * math.cos(angle), radius * math.sin(angle))
 			this.swirl:SetAlpha(1 - t)
