@@ -370,8 +370,68 @@ into independently testable passes, in order:
    `TS.processing`/`queueDone`/`queueTotal` logic untouched.
 5. Lock-in bloom/spark + row flash — cosmetic retune only (colors/timing) of
    the already-implemented `TalentStage_TalentButton_OnUpdate` logic.
-6. Import/Export row (built, wired to no-ops) + hide the settings gear — see
-   the Design reference decision above.
+6. Import/Export row (built, wired to a real codec — see "Build-code
+   import/export" below) + hide the settings gear — see the Design reference
+   decision above.
+
+### Build-code import/export (built 2026-08-23) — RESOLVED, do not re-derive
+Import/Export buttons are wired to a real codec now (`TalentStageCodec.lua`),
+compatible with octowow.st's talent calculator. Key finding: **the deployed
+site does NOT match `github.com/Haaxor1689/talent-builder`'s current `main`
+branch** (`src/components/calculator/utils.ts`'s `bitPack`/`bitUnpack` trims
+trailing zeros before packing; the live site does not). The real scheme was
+recovered by pulling and reading the actual bundle served at octowow.st
+(`page-ce9cdb06bf9c66c9.js`, module `8106`, functions `i`/`o`), not the repo.
+If the deployed bundle ever changes, re-derive from a fresh fetch of that
+page's chunks rather than trusting the GitHub repo.
+
+Scheme (see `TalentStageCodec.lua`'s header comment for the full write-up):
+per tree, a fixed 28-slot array (7 tiers x 4 columns, slot = `(tier-1)*4 +
+(column-1) + 1`, 1-indexed) of 3-bit ranks, concatenated to 84 bits, chunked
+into <=8-bit pieces (last piece 4 bits, deliberately *not* zero-padded —
+reproduced as-is for compatibility), base64'd, one trailing `=` dropped
+unconditionally, then trailing `A` runs stripped; the 3 tree segments joined
+with `-`. Decode pads each segment back to 14 base64 chars with `A` before
+decoding. No bitwise ops used (vanilla Lua 5.0 has none) — pure arithmetic
+(`math.mod`/`math.floor`), verified against the real bundle: a pure-arithmetic
+Python mirror, then the actual `.lua` file (loaded through `lupa`/LuaJIT,
+since no Lua 5.0/5.1 CLI was available in the dev sandbox — `math.mod` and
+`table.getn` were shimmed onto LuaJIT's 5.4-family stdlib for the test), both
+reproduced the worked example (`"RI-DgJI-AQ"` → Assassination 4/47, Combat
+10/54, Subtlety 2/47) exactly and round-tripped 200 random realistic builds
+against the live bundle's own encode/decode with zero mismatches.
+
+Talent ordering within a tree does **not** need to match whatever order
+`GetTalentInfo`'s `talentIndex` enumerates in: the talent-builder schema has
+no separate tier/column field on a talent record at all (position is
+implied entirely by flat array index over the fixed 7x4 grid), so
+`TalentStageCodec.SlotForTierColumn(tier, column)` places each talent by its
+own live `(tier, column)` directly — sidesteps needing a live dump
+cross-check of ordering.
+
+Import always *adds* staged points on top of whatever's already actually
+spent (real rank, or sandbox-fake-confirmed) — there's no way to unstage a
+real point outside an actual respec, so a target lower than an already-spent
+rank on some talent can't be represented; `TalentStage_ImportBuild` reports
+any such shortfall rather than pretending to apply it. It loops staging
+attempts to a fixed point (via the existing `TalentStage_Stage`, given a new
+`silent` param to skip the per-point sound/refresh during a batch import)
+so prereq/tier-unlock ordering resolves itself regardless of `pairs()` walk
+order, reusing all of `TalentStage_Stage`'s existing real-game validation
+rather than re-implementing it.
+
+Export encodes `TalentStage_EffectiveRank` (real + staged, sandbox-aware) —
+what's currently displayed, including any not-yet-confirmed staged plan, not
+just the character's actually-spent points. The full-URL export uses
+`UnitClass("player")`'s english class name, lowercased, as the octowow.st
+class-slug path segment; import accepts either a bare code or a full URL
+(extracts `points=` and, if present, the `/talents/<slug>/` class for a
+mismatch warning) via `TalentStage_ExtractImportCode`.
+
+Only the current `points=` scheme is supported — octowow.st's legacy
+`t=`/`c=` query params (old-format shared links, single-digit-per-talent, no
+base64) are intentionally not decoded; this addon only needs to round-trip
+codes it can also produce itself.
 
 ## Notes changing the approach
 - Target `Blizzard_TalentUI`'s namespace/frames, not FrameXML's — same names

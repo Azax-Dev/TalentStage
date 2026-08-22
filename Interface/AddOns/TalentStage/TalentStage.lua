@@ -364,14 +364,160 @@ end
 
 --------------------------------------------------------------------------
 -- Import/export row: matches the rogue-talent-redesign-v2.html mockup's
--- always-visible row above the trees. The actual build-code codec doesn't
--- exist yet (separate future task, see CLAUDE.md "Design reference" /
--- Phase 2 decision) -- these controls are wired to a no-op placeholder for
--- now, not left out, so the layout/chrome can be reviewed as a whole.
+-- always-visible row above the trees. Build codes use the octowow.st talent
+-- calculator's own scheme (see TalentStageCodec.lua for the reverse-
+-- engineering notes and compatibility caveats) so a code copied from either
+-- tool works in the other.
 --------------------------------------------------------------------------
 
-function TalentStage_ImportExportNoop()
-	DEFAULT_CHAT_FRAME:AddMessage("TalentStage: import/export isn't implemented yet.")
+-- Percent-decodes a query-string value. Deliberately does NOT turn '+' into
+-- a space (the usual application/x-www-form-urlencoded convention): '+' is a
+-- meaningful base64 character in these codes, and a well-formed octowow.st
+-- link already percent-encodes any literal '+' as %2B, so leaving bare '+'
+-- alone is correct for both a pasted URL and a pasted bare code.
+local function TalentStage_UrlDecode(s)
+	return (string.gsub(s, "%%(%x%x)", function(hex) return string.char(tonumber(hex, 16)) end))
+end
+
+-- Accepts either a bare build code or a full octowow.st URL (any query
+-- param order/extras) and returns the bare code plus the class slug from the
+-- URL path, if one was present (nil for a bare code -- there's nothing to
+-- extract it from).
+function TalentStage_ExtractImportCode(input)
+	input = string.gsub(input, "^%s*(.-)%s*$", "%1")
+	local _, _, raw = string.find(input, "points=([^&]*)")
+	if not raw then
+		return input, nil
+	end
+	local _, _, slug = string.find(input, "/talents/(%a+)/")
+	return TalentStage_UrlDecode(raw), slug
+end
+
+function TalentStage_BuildExportCode()
+	local trees = {}
+	for tab = 1, 3 do
+		local ranks = {}
+		for i = 1, TalentStageCodec.SLOTS do ranks[i] = 0 end
+		local panel = TS.panels[tab]
+		if panel then
+			for idx, d in pairs(panel.info) do
+				local slot = TalentStageCodec.SlotForTierColumn(d.tier, d.column)
+				ranks[slot] = TalentStage_EffectiveRank(tab, idx, d.rank)
+			end
+		end
+		trees[tab] = ranks
+	end
+	return TalentStageCodec.Encode(trees[1], trees[2], trees[3])
+end
+
+function TalentStage_BuildExportUrl(code)
+	local _, engClass = UnitClass("player")
+	local slug = string.lower(engClass or "class")
+	return "https://octowow.st/talents/" .. slug .. "/?points=" .. code
+end
+
+function TalentStage_OnExportClick()
+	local code = TalentStage_BuildExportCode()
+	local url = TalentStage_BuildExportUrl(code)
+
+	TS.importEditBox:SetText(url)
+	TS.importEditBox:HighlightText()
+	TS.importEditBox:SetFocus()
+
+	DEFAULT_CHAT_FRAME:AddMessage("TalentStage: build code - " .. code)
+	DEFAULT_CHAT_FRAME:AddMessage("TalentStage: full link (also placed in the import/export box, ready to copy) - " .. url)
+end
+
+-- Only ever ADDS staged points on top of whatever's already actually spent
+-- (real ranks, or -- in sandbox mode -- fake-confirmed ones): there's no way
+-- to unstage/unlearn a real point outside of an actual in-game respec, so an
+-- imported build that wants fewer points in a talent than the character
+-- already has invested there simply can't be reflected for that talent.
+-- Loops to a fixed point rather than a single pass so prereq/tier-unlock
+-- ordering resolves itself regardless of which slot happens to be visited
+-- first in an unordered pairs() walk.
+function TalentStage_ImportBuild(code, slug)
+	if TS.processing then
+		DEFAULT_CHAT_FRAME:AddMessage("TalentStage: can't import while a confirm is in progress.")
+		return
+	end
+
+	local t1, t2, t3, err = TalentStageCodec.Decode(code)
+	if not t1 then
+		DEFAULT_CHAT_FRAME:AddMessage("TalentStage: import failed - " .. (err or "invalid build code"))
+		return
+	end
+
+	if slug then
+		local _, engClass = UnitClass("player")
+		if string.lower(slug) ~= string.lower(engClass or "") then
+			DEFAULT_CHAT_FRAME:AddMessage("TalentStage: warning - this link is for " .. slug .. ", but you're playing " .. (engClass or "?") .. ". Importing anyway, but the tree layout won't match.")
+		end
+	end
+
+	TS.staged = {}
+	local trees = { t1, t2, t3 }
+
+	local function targetFor(panel, idx, d, ranks)
+		local slot = TalentStageCodec.SlotForTierColumn(d.tier, d.column)
+		local target = ranks[slot] or 0
+		if target > d.maxRank then target = d.maxRank end
+		return target
+	end
+
+	local progressed = true
+	while progressed do
+		progressed = false
+		for tab = 1, 3 do
+			local panel = TS.panels[tab]
+			local ranks = trees[tab]
+			if panel and ranks then
+				for idx, d in pairs(panel.info) do
+					local target = targetFor(panel, idx, d, ranks)
+					local effRank = TalentStage_EffectiveRank(tab, idx, d.rank)
+					if effRank < target then
+						local before = TalentStage_GetStaged(tab, idx)
+						TalentStage_Stage(tab, idx, true)
+						if TalentStage_GetStaged(tab, idx) > before then
+							progressed = true
+						end
+					end
+				end
+			end
+		end
+	end
+
+	local shortfall = 0
+	for tab = 1, 3 do
+		local panel = TS.panels[tab]
+		local ranks = trees[tab]
+		if panel and ranks then
+			for idx, d in pairs(panel.info) do
+				local target = targetFor(panel, idx, d, ranks)
+				local effRank = TalentStage_EffectiveRank(tab, idx, d.rank)
+				if effRank < target then
+					shortfall = shortfall + (target - effRank)
+				end
+			end
+		end
+	end
+
+	TalentStage_Refresh()
+	if shortfall > 0 then
+		DEFAULT_CHAT_FRAME:AddMessage("TalentStage: build imported, but " .. shortfall .. " point(s) couldn't be staged (not enough available points, or a prereq/tier already blocked by real spent points). Review the staged plan, then Confirm to apply what did stage.")
+	else
+		DEFAULT_CHAT_FRAME:AddMessage("TalentStage: build imported and staged. This replaced any previously staged (unconfirmed) points. Review, then Confirm to spend them.")
+	end
+end
+
+function TalentStage_OnImportClick()
+	local input = TS.importEditBox:GetText()
+	if not input or input == "" then
+		DEFAULT_CHAT_FRAME:AddMessage("TalentStage: paste a build code or octowow.st link into the box first.")
+		return
+	end
+	local code, slug = TalentStage_ExtractImportCode(input)
+	TalentStage_ImportBuild(code, slug)
 end
 
 function TalentStage_BuildImportRow()
@@ -385,7 +531,7 @@ function TalentStage_BuildImportRow()
 	exportBtn:SetHeight(22)
 	exportBtn:SetPoint("RIGHT", row, "RIGHT", 0, -4)
 	exportBtn:SetText("Export")
-	exportBtn:SetScript("OnClick", TalentStage_ImportExportNoop)
+	exportBtn:SetScript("OnClick", TalentStage_OnExportClick)
 	TS.exportButton = exportBtn
 
 	local importBtn = CreateFrame("Button", "TalentStageImportButton", row, "UIPanelButtonTemplate")
@@ -393,7 +539,7 @@ function TalentStage_BuildImportRow()
 	importBtn:SetHeight(22)
 	importBtn:SetPoint("RIGHT", exportBtn, "LEFT", -6, 0)
 	importBtn:SetText("Import")
-	importBtn:SetScript("OnClick", TalentStage_ImportExportNoop)
+	importBtn:SetScript("OnClick", TalentStage_OnImportClick)
 	TS.importButton = importBtn
 
 	local editBg = CreateFrame("Frame", "TalentStageImportBox", row)
@@ -1305,7 +1451,10 @@ function TalentStage_TalentButton_OnUpdate()
 	end
 end
 
-function TalentStage_Stage(tab, idx)
+-- silent: skip the click sound and per-call Refresh -- used by build import,
+-- which stages many points in one batch and refreshes/reports once at the end
+-- instead of once per point.
+function TalentStage_Stage(tab, idx, silent)
 	if TS.processing then return end
 
 	local panel = TS.panels[tab]
@@ -1323,8 +1472,10 @@ function TalentStage_Stage(tab, idx)
 	if not TS.staged[tab] then TS.staged[tab] = {} end
 	TS.staged[tab][idx] = staged + 1
 
-	PlaySound("igMainMenuOptionCheckBoxOn")
-	TalentStage_Refresh()
+	if not silent then
+		PlaySound("igMainMenuOptionCheckBoxOn")
+		TalentStage_Refresh()
+	end
 end
 
 -- True if any currently-staged point in this tab would fail its tier-unlock
