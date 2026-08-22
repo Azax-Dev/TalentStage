@@ -312,18 +312,6 @@ function TalentStage_BuildUI()
 				glow:SetAlpha(0)
 				btn.glow = glow
 
-				-- lock-in "swirl": a small spark that orbits the button fast
-				-- (vanilla has no texture rotation, so this fakes it by moving
-				-- the anchor point around a circle each frame) and fades out
-				local swirl = btn:CreateTexture(nil, "OVERLAY")
-				swirl:SetTexture("Interface\\Buttons\\WHITE8X8")
-				swirl:SetWidth(11)
-				swirl:SetHeight(11)
-				swirl:SetBlendMode("ADD")
-				swirl:SetVertexColor(1, 0.85, 0.3)
-				swirl:SetAlpha(0)
-				btn.swirl = swirl
-
 				local rankText = btn:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
 				rankText:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -2, 2)
 				btn.rankText = rankText
@@ -1261,32 +1249,19 @@ function TalentStage_TalentButton_OnUpdate()
 			this.glow:ClearAllPoints()
 			this.glow:SetPoint("TOPLEFT", this, "TOPLEFT", -4, 4)
 			this.glow:SetPoint("BOTTOMRIGHT", this, "BOTTOMRIGHT", 4, -4)
-			this.swirl:SetAlpha(0)
 		else
 			this.glow:SetAlpha(1 - t)
 
-			-- bloom outward 20% of the button's own size at the moment it
+			-- bloom outward 22% of the button's own size at the moment it
 			-- locks in, then shrink back down to the normal 4px border as
 			-- the flash decays, for a punchier "lock-in" pop
-			local bloom = 4 + (this:GetWidth() * 0.2 * (1 - t))
+			local bloom = 4 + (this:GetWidth() * 0.22 * (1 - t))
 			this.glow:ClearAllPoints()
 			this.glow:SetPoint("TOPLEFT", this, "TOPLEFT", -bloom, bloom)
 			this.glow:SetPoint("BOTTOMRIGHT", this, "BOTTOMRIGHT", bloom, -bloom)
 
 			-- gold-hot at the peak, cooling back to plain white as it fades
 			this.glow:SetVertexColor(1, 0.85 + 0.15 * t, 0.5 + 0.5 * t)
-
-			-- swirl: a spark orbiting the button's edge, fading out as the
-			-- flash decays. Eased (ease-out) angular speed instead of a
-			-- constant one: fast on the outer laps, slowing into the finish,
-			-- which reads far smoother than a constant-speed spin at the
-			-- variable, often-low frame rates this client actually renders at.
-			local radius = (this:GetWidth() / 2) + 12
-			local eased = 1 - (1 - t) * (1 - t)
-			local angle = eased * 2.5 * 2 * math.pi -- ~2.5 laps over the flash
-			this.swirl:ClearAllPoints()
-			this.swirl:SetPoint("CENTER", this, "CENTER", radius * math.cos(angle), radius * math.sin(angle))
-			this.swirl:SetAlpha(1 - t)
 		end
 		return
 	end
@@ -1322,8 +1297,10 @@ function TalentStage_TalentButton_OnUpdate()
 	end
 
 	if this.stagedGlow then
-		this.glowPhase = (this.glowPhase or 0) + arg1
-		local a = 0.35 + 0.35 * math.abs(math.sin(this.glowPhase * 3))
+		-- driven off a shared clock (not a per-button elapsed accumulator)
+		-- so every staged button pulses in lockstep regardless of when it
+		-- was individually staged
+		local a = 0.35 + 0.35 * math.abs(math.sin(GetTime() * 3))
 		this.glow:SetAlpha(a)
 	end
 end
