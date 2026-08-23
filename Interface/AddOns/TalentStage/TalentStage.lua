@@ -108,7 +108,14 @@ TS.queueDone = 0        -- points settled so far in the current confirm run
 -- spending (or paying to respec) real talent points. sandboxConfirmed is a
 -- purely cosmetic overlay of "confirmed" points layered on top of the real
 -- GetTalentInfo rank, mirroring how staged points are already layered on.
+-- Character level -> total talent points, matching the classic "1 point per
+-- level starting at 10" formula, capped at level 60 (51 points).
+TS.SANDBOX_LEVEL_CAPS = { 10, 20, 30, 40, 50, 60 }
+
 TS.sandboxMode = false
+TS.sandboxLevelCap = nil -- nil = unlimited (999) sandbox points; otherwise one of
+                        -- TS.SANDBOX_LEVEL_CAPS, and available points is capped
+                        -- to what a character of that level would actually have
 TS.sandboxConfirmed = {} -- sandboxConfirmed[tab][idx] = fake-confirmed rank count
 TS.CONFIRM_FLASH_DURATION = 0.5
 TS.TIER_FLASH_DURATION = 0.6
@@ -665,9 +672,11 @@ function TalentStage_BuildSettings()
 	-- parented to UIParent (not TalentStageFrame) and given its own toplevel
 	-- strata so its size/position are never constrained by the talent frame's
 	-- own (dynamic, often narrower-than-220) bounds
+	local PAD = 12
+
 	local panel = CreateFrame("Frame", "TalentStageSettingsPanel", UIParent)
-	panel:SetWidth(210)
-	panel:SetHeight(96)
+	panel:SetWidth(230)
+	panel:SetHeight(190)
 	panel:SetPoint("CENTER", UIParent, "CENTER", -260, 0)
 	panel:SetFrameStrata("DIALOG")
 	panel:SetToplevel(true)
@@ -685,19 +694,52 @@ function TalentStage_BuildSettings()
 	close:SetScript("OnClick", function() panel:Hide() end)
 
 	local heading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	heading:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -10)
+	heading:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD, -10)
 	heading:SetText("Dev settings")
 
 	local sandboxCheck = CreateFrame("CheckButton", "TalentStageSandboxCheck", panel, "UICheckButtonTemplate")
-	sandboxCheck:SetPoint("TOPLEFT", heading, "BOTTOMLEFT", -2, -8)
+	sandboxCheck:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD - 4, -28)
 	getglobal("TalentStageSandboxCheckText"):SetText("Sandbox mode (dev)")
 	sandboxCheck:SetScript("OnClick", TalentStage_ToggleSandboxMode)
 	TS.sandboxCheck = sandboxCheck
 
+	local capLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	capLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD, -66)
+	capLabel:SetTextColor(TS.COLOR.parchment[1], TS.COLOR.parchment[2], TS.COLOR.parchment[3])
+	capLabel:SetText("Point cap (unchecked = unlimited)")
+
+	-- Level-cap ladder: mutually-exclusive checkboxes, one per 10 levels, so
+	-- sandbox testing can be limited to what a character of that level would
+	-- actually have (level - 9 points, classic's 1-point-per-level-from-10
+	-- formula) instead of always getting the unlimited 999. Laid out as an
+	-- explicit 3x2 grid (rather than computed via mod/floor, which older Lua
+	-- 5.0 clients handle inconsistently) so the six boxes stay evenly spaced.
+	local rows = { { 10, 20, 30 }, { 40, 50, 60 } }
+	local colWidth = 62
+	local rowHeight = 24
+	TS.sandboxLevelChecks = {}
+	for r = 1, table.getn(rows) do
+		local rowLevels = rows[r]
+		for c = 1, table.getn(rowLevels) do
+			local lvl = rowLevels[c]
+			local name = "TalentStageSandboxLevelCheck"..lvl
+			local check = CreateFrame("CheckButton", name, panel, "UICheckButtonTemplate")
+			check:SetWidth(18)
+			check:SetHeight(18)
+			check:SetPoint("TOPLEFT", panel, "TOPLEFT", (PAD - 4) + (c - 1) * colWidth, -86 - (r - 1) * rowHeight)
+			local label = getglobal(name.."Text")
+			label:SetFontObject(GameFontHighlightSmall)
+			label:SetText(tostring(lvl))
+			check.sandboxLevel = lvl
+			check:SetScript("OnClick", TalentStage_SelectSandboxLevelCap)
+			TS.sandboxLevelChecks[lvl] = check
+		end
+	end
+
 	local resetBtn = CreateFrame("Button", "TalentStageSandboxResetButton", panel, "UIPanelButtonTemplate")
-	resetBtn:SetWidth(150)
-	resetBtn:SetHeight(22)
-	resetBtn:SetPoint("TOP", sandboxCheck, "BOTTOM", 2, -16)
+	resetBtn:SetWidth(190)
+	resetBtn:SetHeight(26)
+	resetBtn:SetPoint("TOP", panel, "TOP", 0, -148)
 	resetBtn:SetText("Reset sandbox talents")
 	resetBtn:SetScript("OnClick", TalentStage_ResetSandbox)
 	TS.sandboxResetButton = resetBtn
@@ -722,6 +764,25 @@ function TalentStage_ToggleSandboxMode()
 	-- entering or leaving sandbox mode always starts from a clean fake
 	-- state -- there's no meaningful way to carry fake-confirmed points
 	-- across the boundary with real character state
+	TalentStage_ResetSandbox()
+end
+
+-- Level-cap checkboxes act as a radio group (Blizzard's CheckButton has no
+-- native radio behavior): clicking one clears the others, and re-clicking
+-- the currently-checked one drops back to unlimited (999).
+function TalentStage_SelectSandboxLevelCap()
+	if TS.processing then
+		-- don't let the cap change mid-confirm-run, the in-flight entries
+		-- were queued under the old cap
+		this:SetChecked(not this:GetChecked())
+		return
+	end
+	local lvl = this.sandboxLevel
+	local checked = this:GetChecked() and true or false
+	for otherLvl, check in pairs(TS.sandboxLevelChecks) do
+		if otherLvl ~= lvl then check:SetChecked(false) end
+	end
+	TS.sandboxLevelCap = checked and lvl or nil
 	TalentStage_ResetSandbox()
 end
 
@@ -856,7 +917,10 @@ function TalentStage_BaseRank(rank)
 end
 
 function TalentStage_GetAvailablePoints()
-	if TS.sandboxMode then return 999 end
+	if TS.sandboxMode then
+		if TS.sandboxLevelCap then return TS.sandboxLevelCap - 9 end
+		return 999
+	end
 	return UnitCharacterPoints("player")
 end
 
