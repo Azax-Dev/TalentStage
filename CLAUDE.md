@@ -459,10 +459,13 @@ codes it can also produce itself.
 
 ## Deployment
 
-After every update to the addon source, copy the updated files into the live
-client's AddOns folder so the change is immediately testable in-game:
+After every update to the addon source, delete the existing live copy and
+replace it with a fresh one, so stale/renamed files never linger:
 
 ```
+rm -f "/mnt/C2D20695D2068E3B/Games/Turtle WoW/Interface/AddOns/TalentStage/"*.lua \
+  "/mnt/C2D20695D2068E3B/Games/Turtle WoW/Interface/AddOns/TalentStage/"*.xml \
+  "/mnt/C2D20695D2068E3B/Games/Turtle WoW/Interface/AddOns/TalentStage/"*.toc
 cp Interface/AddOns/TalentStage/*.lua Interface/AddOns/TalentStage/*.xml Interface/AddOns/TalentStage/*.toc \
   "/mnt/C2D20695D2068E3B/Games/Turtle WoW/Interface/AddOns/TalentStage/"
 ```
