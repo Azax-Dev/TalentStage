@@ -11,6 +11,11 @@ This is an addon, not engine code. It ships as a normal
 client used by Turtle WoW and OctoWoW today. No dependency on the custom
 WoWee client — that's a possible future home for this logic, not the target.
 
+The project/addon name stays "TalentStage" (folder, `.toc`, `TalentStageFrame`,
+all `TalentStage_*` identifiers, `/ts`/`/talentstage` slash command). The
+in-frame titlebar FontString the player sees is the display string
+"Talent Stage" (with a space) — cosmetic only, not an identifier.
+
 ## Environment
 Live client install, read for reference only, do not edit in place:
 

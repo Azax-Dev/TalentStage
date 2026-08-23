@@ -345,9 +345,9 @@ function TalentStage_BuildUI()
 	TalentStage_ApplyPlainBackdrop(TalentStageFrame, 0.92)
 
 	local title = TalentStageFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-	title:SetPoint("TOP", TalentStageFrame, "TOP", 0, -14)
+	title:SetPoint("TOP", TalentStageFrame, "TOP", 0, -24)
 	title:SetTextColor(TS.COLOR.goldBright[1], TS.COLOR.goldBright[2], TS.COLOR.goldBright[3])
-	title:SetText("Talents")
+	title:SetText("Talent Stage")
 	TalentStageFrame.title = title
 
 	local sandboxLabel = TalentStageFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -650,47 +650,38 @@ function TalentStage_BuildImportRow()
 end
 
 --------------------------------------------------------------------------
--- Settings: currently just the dev sandbox toggle. The gear icon/panel is
--- deliberately generic so future real settings (theme, etc, see CLAUDE.md
--- backlog) can be added as more rows without restructuring this.
---
--- Left visible for now for in-progress testing (was hidden briefly during
--- Phase 2, see CLAUDE.md "Design reference" decision, 2026-08-22, which
--- expects it to go away once sandbox mode is no longer needed for dev
--- testing) -- `gear:Hide()` is the one line to remove it again later.
+-- Dev panel: sandbox mode toggle only, reachable via "/ts dev" instead of
+-- a visible gear icon on the main frame (see CLAUDE.md dev/release split
+-- decision 2026-08-23) -- a slash command keeps the release and dev code
+-- identical instead of exporting two addon copies.
 --------------------------------------------------------------------------
 
 function TalentStage_BuildSettings()
-	local gear = CreateFrame("Button", "TalentStageSettingsButton", TalentStageFrame)
-	gear:SetWidth(22)
-	gear:SetHeight(22)
-	gear:SetPoint("TOPLEFT", TalentStageFrame, "TOPLEFT", 6, -6)
-	local gearTex = gear:CreateTexture(nil, "ARTWORK")
-	gearTex:SetAllPoints(gear)
-	-- a real trade-skill icon rather than "Interface\Buttons\UI-OptionsButton":
-	-- that path doesn't exist in the 1.12 client (renders blank), this one is
-	-- guaranteed present and reads as a gear/cog at a glance
-	gearTex:SetTexture("Interface\\Icons\\Trade_Engineering")
-	gearTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-	gear:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-	gear:SetScript("OnClick", TalentStage_ToggleSettingsPanel)
-
 	-- parented to UIParent (not TalentStageFrame) and given its own toplevel
 	-- strata so its size/position are never constrained by the talent frame's
 	-- own (dynamic, often narrower-than-220) bounds
 	local panel = CreateFrame("Frame", "TalentStageSettingsPanel", UIParent)
 	panel:SetWidth(210)
 	panel:SetHeight(96)
-	panel:SetPoint("TOPLEFT", gear, "BOTTOMLEFT", -4, -6)
+	panel:SetPoint("CENTER", UIParent, "CENTER", -260, 0)
 	panel:SetFrameStrata("DIALOG")
 	panel:SetToplevel(true)
+	panel:EnableMouse(true)
+	panel:SetMovable(true)
+	panel:RegisterForDrag("LeftButton")
+	panel:SetScript("OnDragStart", function() this:StartMoving() end)
+	panel:SetScript("OnDragStop", function() this:StopMovingOrSizing() end)
 	TalentStage_ApplyPlainBackdrop(panel, 0.95)
 	panel:Hide()
 	TS.settingsPanel = panel
 
+	local close = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
+	close:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -4, -4)
+	close:SetScript("OnClick", function() panel:Hide() end)
+
 	local heading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	heading:SetPoint("TOPLEFT", panel, "TOPLEFT", 12, -10)
-	heading:SetText("Settings")
+	heading:SetText("Dev settings")
 
 	local sandboxCheck = CreateFrame("CheckButton", "TalentStageSandboxCheck", panel, "UICheckButtonTemplate")
 	sandboxCheck:SetPoint("TOPLEFT", heading, "BOTTOMLEFT", -2, -8)
@@ -1827,7 +1818,9 @@ SlashCmdList["TALENTSTAGE"] = function(msg)
 	elseif msg == "testconnectors" then
 		TalentStage_BuildConnectorTestFrame()
 		TS.connectorTestFrame:Show()
+	elseif msg == "dev" then
+		TalentStage_ToggleSettingsPanel()
 	else
-		DEFAULT_CHAT_FRAME:AddMessage("TalentStage: /ts dump - dump live GetTalentInfo/GetTalentPrereqs data to a copy box and SavedVariables. /ts testconnectors - show a synthetic diagonal-connector test panel.")
+		DEFAULT_CHAT_FRAME:AddMessage("TalentStage: /ts dump - dump live GetTalentInfo/GetTalentPrereqs data to a copy box and SavedVariables. /ts testconnectors - show a synthetic diagonal-connector test panel. /ts dev - toggle the dev sandbox-mode panel.")
 	end
 end

@@ -1,5 +1,5 @@
 ## Interface: 11200
-## Title: TalentStage
+## Title: |cfff3cd7eTalent Stage|r |cff8d7f68by Azax|r
 ## Notes: Standalone redesigned talent UI - phase 1 (all three trees visible, stage-then-confirm). No pfUI/ElvUI dependency.
 ## Author: Ross Anderson
 ## Version: 0.1
