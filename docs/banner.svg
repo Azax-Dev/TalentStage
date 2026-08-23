@@ -1,0 +1,31 @@
+<svg width="900" height="220" viewBox="0 0 900 220" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#241a12"/>
+      <stop offset="100%" stop-color="#0d0a08"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect x="4" y="4" width="892" height="212" rx="10" fill="url(#bg)" stroke="#8a6a35" stroke-width="2"/>
+  <rect x="10" y="10" width="880" height="200" rx="8" fill="none" stroke="#4a3a24" stroke-width="1"/>
+
+  <text x="450" y="112" text-anchor="middle"
+        font-family="Georgia, 'Times New Roman', serif" font-weight="700"
+        font-size="52" letter-spacing="6" fill="#ff3df0" filter="url(#glow)">TALENT STAGE</text>
+
+  <line x1="290" y1="142" x2="440" y2="142" stroke="#8a6a35" stroke-width="1"/>
+  <rect x="446" y="138" width="8" height="8" fill="#d9a94f" transform="rotate(45 450 142)"/>
+  <line x1="460" y1="142" x2="610" y2="142" stroke="#8a6a35" stroke-width="1"/>
+
+  <text x="450" y="174" text-anchor="middle"
+        font-family="-apple-system, Segoe UI, sans-serif" font-size="15" letter-spacing="1.5"
+        fill="#d9c9a3">A modern talent frame for WoW 1.12 — Turtle WoW · OctoWoW</text>
+</svg>

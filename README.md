@@ -1,3 +1,8 @@
+<p align="center"><img src="docs/banner.svg" alt="Talent Stage"></p>
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/azaxuk)
+
 # Talent Stage
 
 A drop-in replacement for the default WoW 1.12 talent frame. All three
@@ -7,12 +12,6 @@ as planned without spending the point until you confirm.
 
 Built for the stock 1.12.1 client used by Turtle WoW and OctoWoW-style
 servers.
-
-## Screenshots
-
-![Rogue talent trees, staged points with prereq connectors](docs/screenshots/rogue-talents.png)
-
-![Mage talent trees, all three panels visible at once](docs/screenshots/mage-talents.png)
 
 ## Features
 
@@ -56,6 +55,11 @@ talent API, including servers that have customized their talent trees.
   (used by octowow.st's talent calculator), which inspired the feature.
   Talent Stage's codec is an independent Lua implementation of the format —
   it reads and writes the same codes, but shares no code with that project.
+
+## Support
+
+If Talent Stage is useful to you, consider [buying me a coffee on
+Ko-fi](https://ko-fi.com/azaxuk). Never required, always appreciated.
 
 ## License
 
