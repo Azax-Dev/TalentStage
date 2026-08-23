@@ -45,6 +45,9 @@
 			<OnDragStop>
 				this:StopMovingOrSizing();
 			</OnDragStop>
+			<OnMouseDown>
+				TalentStage_ClearImportFocus();
+			</OnMouseDown>
 		</Scripts>
 	</Frame>
 </Ui>

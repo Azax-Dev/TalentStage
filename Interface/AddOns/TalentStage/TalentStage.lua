@@ -423,6 +423,8 @@ function TalentStage_OnExportClick()
 	TS.importEditBox:SetText(url)
 	TS.importEditBox:HighlightText()
 	TS.importEditBox:SetFocus()
+	if TS.importHint then TS.importHint:Hide() end
+	if TS.importClearButton then TS.importClearButton:Show() end
 
 	DEFAULT_CHAT_FRAME:AddMessage("TalentStage: build code - " .. code)
 	DEFAULT_CHAT_FRAME:AddMessage("TalentStage: full link (also placed in the import/export box, ready to copy) - " .. url)
@@ -510,6 +512,42 @@ function TalentStage_ImportBuild(code, slug)
 	end
 end
 
+-- Clicking anywhere on the panel background that isn't itself a mouse-
+-- enabled child (talent buttons, the edit box, other buttons) bubbles up to
+-- TalentStageFrame's own OnMouseDown -- used as a lightweight "click away"
+-- to drop focus out of the import/export box.
+function TalentStage_ClearImportFocus()
+	if TS.importEditBox and TS.importEditBoxFocused then
+		TS.importEditBox:ClearFocus()
+	end
+end
+
+-- Catches clicks outside TalentStageFrame entirely (e.g. the game world,
+-- empty screen space) so the import box also loses focus there, not just on
+-- clicks within the panel. Full-screen and BACKGROUND-strata so any real UI
+-- frame above it (action bars, minimap, TalentStageFrame itself) still gets
+-- the click first -- this only ever sees clicks nothing else claimed. Only
+-- enabled while the import box is actually focused, so it never interferes
+-- with normal world clicks (camera turn, targeting) otherwise.
+function TalentStage_ShowClickCatcher()
+	if not TS.clickCatcher then
+		local f = CreateFrame("Frame", "TalentStageClickCatcher", UIParent)
+		f:SetFrameStrata("BACKGROUND")
+		f:SetAllPoints(UIParent)
+		f:EnableMouse(true)
+		f:SetScript("OnMouseDown", function() TalentStage_ClearImportFocus() end)
+		f:Hide()
+		TS.clickCatcher = f
+	end
+	TS.clickCatcher:Show()
+end
+
+function TalentStage_HideClickCatcher()
+	if TS.clickCatcher then
+		TS.clickCatcher:Hide()
+	end
+end
+
 function TalentStage_OnImportClick()
 	local input = TS.importEditBox:GetText()
 	if not input or input == "" then
@@ -550,15 +588,63 @@ function TalentStage_BuildImportRow()
 	editBg:SetBackdropColor(TS.COLOR.panel2[1], TS.COLOR.panel2[2], TS.COLOR.panel2[3], 0.9)
 	editBg:SetBackdropBorderColor(TS.COLOR.edgeBright[1], TS.COLOR.edgeBright[2], TS.COLOR.edgeBright[3], 1)
 
+	local clearBtn = CreateFrame("Button", "TalentStageImportClearButton", editBg)
+	clearBtn:SetWidth(14)
+	clearBtn:SetHeight(14)
+	clearBtn:SetPoint("RIGHT", editBg, "RIGHT", -6, 0)
+	local clearText = clearBtn:CreateFontString(nil, "OVERLAY")
+	clearText:SetFontObject(GameFontNormalSmall)
+	clearText:SetAllPoints(clearBtn)
+	clearText:SetJustifyH("CENTER")
+	clearText:SetText("x")
+	clearText:SetTextColor(TS.COLOR.parchment[1], TS.COLOR.parchment[2], TS.COLOR.parchment[3], 0.6)
+	clearBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+	TS.importClearButton = clearBtn
+
 	local edit = CreateFrame("EditBox", "TalentStageImportEditBox", editBg)
 	edit:SetAutoFocus(false)
 	edit:SetFontObject(ChatFontNormal)
 	edit:SetPoint("LEFT", editBg, "LEFT", 8, 0)
-	edit:SetPoint("RIGHT", editBg, "RIGHT", -8, 0)
+	edit:SetPoint("RIGHT", clearBtn, "LEFT", -4, 0)
 	edit:SetHeight(18)
 	edit:SetTextColor(TS.COLOR.parchment[1], TS.COLOR.parchment[2], TS.COLOR.parchment[3])
 	edit:SetScript("OnEscapePressed", function() this:ClearFocus() end)
+	-- vanilla 1.12's EditBox has no :HasFocus() (added WotLK+) -- track focus
+	-- by hand so TalentStage_ClearImportFocus knows whether to call ClearFocus
+	edit:SetScript("OnEditFocusGained", function()
+		TS.importEditBoxFocused = true
+		TalentStage_ShowClickCatcher()
+	end)
+	edit:SetScript("OnEditFocusLost", function()
+		TS.importEditBoxFocused = false
+		TalentStage_HideClickCatcher()
+	end)
 	TS.importEditBox = edit
+
+	local hint = editBg:CreateFontString("TalentStageImportHint", "OVERLAY")
+	hint:SetFontObject(ChatFontNormal)
+	hint:SetPoint("LEFT", edit, "LEFT", 0, 0)
+	hint:SetPoint("RIGHT", edit, "RIGHT", 0, 0)
+	hint:SetJustifyH("LEFT")
+	hint:SetTextColor(TS.COLOR.parchment[1], TS.COLOR.parchment[2], TS.COLOR.parchment[3], 0.45)
+	hint:SetText("Paste a talent code or octowow.st link to import")
+	TS.importHint = hint
+
+	local function TalentStage_UpdateImportHint()
+		if edit:GetText() == "" then
+			hint:Show()
+			clearBtn:Hide()
+		else
+			hint:Hide()
+			clearBtn:Show()
+		end
+	end
+	edit:SetScript("OnTextChanged", TalentStage_UpdateImportHint)
+	clearBtn:SetScript("OnClick", function()
+		edit:SetText("")
+		edit:ClearFocus()
+	end)
+	TalentStage_UpdateImportHint()
 
 	TS.importRow = row
 end
