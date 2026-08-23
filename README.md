@@ -39,15 +39,24 @@ servers.
 
 ## Installation
 
-1. Download this repository as a zip, or `git clone` it.
-2. If you downloaded a zip, extract it — it unpacks to a folder named
-   `talent-stage-master`.
-3. Rename that folder to exactly `TalentStage` (not "Talent Stage", not
-   "talent-stage") — it must match the addon's `.toc` filename exactly, or
-   the addon will silently fail to load with no error.
-4. Move the `TalentStage` folder into `Interface/AddOns/` in your WoW
-   installation.
-5. Launch WoW, or `/reload` if it's already running.
+**Recommended:** download the latest release, already correctly named, no
+extra steps.
+
+1. Download the latest release: [Releases
+   page](https://github.com/Azax-Dev/talent-stage/releases/latest).
+2. Extract it — you'll get a `TalentStage` folder, ready to use as-is.
+3. Move it into `Interface/AddOns/` in your WoW installation.
+4. Launch WoW, or `/reload` if it's already running.
+
+<details>
+<summary>Installing from source instead (git clone or branch zip)</summary>
+
+If you clone the repo or use GitHub's "Download ZIP" button on the branch
+instead of a release, the folder won't be pre-named — rename it to exactly
+`TalentStage` before moving it into `Interface/AddOns/`, or the addon will
+silently fail to load with no error.
+
+</details>
 
 Open your talent pane as usual (default `N` keybind, or the micro-menu
 button) — Talent Stage replaces it automatically. Useful slash commands:
