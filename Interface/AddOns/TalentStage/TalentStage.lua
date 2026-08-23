@@ -116,6 +116,11 @@ TS.tierUnlockState = {} -- tierUnlockState[tab][tier] = last known IsTierUnlocke
                         -- result, so Refresh can detect a locked<->unlocked
                         -- transition and flash the whole row once, instead of
                         -- the color just snapping between grey and lit.
+TS.prereqMetState = {}  -- prereqMetState[tab][idx] = last known TalentStage_PrereqsMet
+                        -- result, so a line-connected talent (e.g. Riposte)
+                        -- can flash on its own when its specific prereq
+                        -- (Deflection) fills/unfills, independent of whether
+                        -- the tier itself unlocks or locks.
 
 --------------------------------------------------------------------------
 -- Frame lifecycle
@@ -939,7 +944,9 @@ function TalentStage_PrereqsMet(tab, idx)
 		if pidx then
 			local d = panel.info[pidx]
 			local effRank = TalentStage_EffectiveRank(tab, pidx, d.rank)
-			if effRank < 1 then
+			-- a prereq line requires the source talent maxed out, not just a
+			-- single point in it -- e.g. Deflection (5 ranks) -> Riposte
+			if effRank < d.maxRank then
 				return false
 			end
 		end
@@ -1026,35 +1033,72 @@ function TalentStage_Refresh()
 
 		local pointsLeft = TalentStage_GetAvailablePoints() - TalentStage_GetTotalStaged()
 
+		-- Refresh rank/maxRank for every node up front so both flash passes
+		-- below (tier and prereq) see this refresh's live data rather than
+		-- whatever was left over from the previous one.
+		for idx, d in pairs(panel.info) do
+			local _, _, _, _, rank, maxRank = GetTalentInfo(tab, idx)
+			d.rank, d.maxRank = rank, maxRank
+		end
+
 		-- Detect a row's lock state flipping since the last refresh and flash
 		-- every button in that row once: gold on unlock, red on re-lock (it
 		-- still ends up grey either way once the flash decays -- the static
 		-- lit/grey color below is unaffected by this, it's a one-shot overlay
 		-- on top). Skipped on this tab's very first refresh (prev == nil) so
 		-- opening the panel doesn't flash every already-unlocked row.
+		--
+		-- A tier unlocking does NOT by itself make a line-gated talent (e.g.
+		-- Riposte) available, so it only flashes gold for row members whose
+		-- own prereq is already independently met. A tier re-locking, though,
+		-- always flashes the whole row red -- every talent in it just became
+		-- unavailable regardless of its own prereq state.
 		if not TS.tierUnlockState[tab] then TS.tierUnlockState[tab] = {} end
 		local tierState = TS.tierUnlockState[tab]
 		for tier, row in pairs(panel.nodes) do
 			local unlocked = TalentStage_IsTierUnlocked(tab, tier)
 			local prev = tierState[tier]
 			if prev ~= nil and prev ~= unlocked then
-				local r, g, b
-				if unlocked then r, g, b = 1, 0.85, 0.1 else r, g, b = 0.9, 0.15, 0.15 end
 				for _, rowIdx in pairs(row) do
-					local rowBtn = panel.buttons[rowIdx]
-					if rowBtn then
-						rowBtn.tierFlashElapsed = 0
-						rowBtn.tierFlashColor = { r, g, b }
+					if unlocked and not TalentStage_PrereqsMet(tab, rowIdx) then
+						-- skip: tier opened up, but this talent's own line
+						-- prereq still isn't filled, so it's still locked
+					else
+						local r, g, b
+						if unlocked then r, g, b = 1, 0.85, 0.1 else r, g, b = 0.9, 0.15, 0.15 end
+						local rowBtn = panel.buttons[rowIdx]
+						if rowBtn then
+							rowBtn.tierFlashElapsed = 0
+							rowBtn.tierFlashColor = { r, g, b }
+						end
 					end
 				end
 			end
 			tierState[tier] = unlocked
 		end
 
+		-- Independent of the tier flash above: a line-connected talent's own
+		-- prereq can fill/unfill (e.g. staging/unstaging Deflection) while
+		-- its tier stays unlocked the whole time. Flash it on its own so
+		-- that transition is visible even when no tier boundary is crossed.
+		if not TS.prereqMetState[tab] then TS.prereqMetState[tab] = {} end
+		local prereqState = TS.prereqMetState[tab]
 		for idx, btn in pairs(panel.buttons) do
-			local realName, icon, tier, column, rank, maxRank = GetTalentInfo(tab, idx)
+			local met = TalentStage_PrereqsMet(tab, idx)
+			local prev = prereqState[idx]
 			local d = panel.info[idx]
-			d.rank, d.maxRank = rank, maxRank
+			if prev ~= nil and prev ~= met and TalentStage_IsTierUnlocked(tab, d.tier) then
+				local r, g, b
+				if met then r, g, b = 1, 0.85, 0.1 else r, g, b = 0.9, 0.15, 0.15 end
+				btn.tierFlashElapsed = 0
+				btn.tierFlashColor = { r, g, b }
+			end
+			prereqState[idx] = met
+		end
+
+		for idx, btn in pairs(panel.buttons) do
+			local d = panel.info[idx]
+			local tier, rank, maxRank = d.tier, d.rank, d.maxRank
 
 			local effRank = TalentStage_EffectiveRank(tab, idx, rank)
 			btn.rankText:SetText(effRank .. "/" .. maxRank)
@@ -1121,7 +1165,7 @@ function TalentStage_UpdateLedger()
 	local total = TalentStage_GetTotalStaged()
 	local available = TalentStage_GetAvailablePoints()
 
-	if TS.processing then
+	if TS.processing and TS.queueTotal > 1 then
 		-- +1: the in-flight point counts as "being applied", not "done" yet
 		local applying = TS.queueDone + 1
 		if applying > TS.queueTotal then applying = TS.queueTotal end
@@ -1152,6 +1196,16 @@ function TalentStage_UpdateLedger()
 		TS.clearButton:Hide()
 		TS.progressLabel:Show()
 		TS.progressBg:Show()
+	elseif TS.processing then
+		-- a single-point confirm settles in one round trip -- a progress bar
+		-- for a queue of 1 has nothing meaningful to animate, so just say so
+		TS.ledgerText:SetText("Applying...")
+		TS.ledgerText:SetTextColor(TS.COLOR.parchment[1], TS.COLOR.parchment[2], TS.COLOR.parchment[3])
+		TS.ledgerText:Show()
+		TS.confirmButton:Hide()
+		TS.clearButton:Hide()
+		TS.progressLabel:Hide()
+		TS.progressBg:Hide()
 	else
 		TS.ledgerText:SetText("Staged: "..total.."   Unspent: "..(available - total).." / "..available)
 		TS.ledgerText:SetTextColor(TS.COLOR.parchment[1], TS.COLOR.parchment[2], TS.COLOR.parchment[3])
@@ -1343,7 +1397,7 @@ function TalentStage_DrawConnectors(panel)
 				if pidx then
 					local p = panel.info[pidx]
 					local pEffRank = p.rank + TalentStage_GetStaged(panel.tab, pidx)
-					local met = pEffRank >= 1
+					local met = pEffRank >= p.maxRank
 					TalentStage_DrawConnectorEdge(panel, p, d, met)
 				end
 			end
