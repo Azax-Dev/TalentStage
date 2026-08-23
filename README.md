@@ -13,31 +13,46 @@ as planned without spending the point until you confirm.
 Built for the stock 1.12.1 client used by Turtle WoW and OctoWoW-style
 servers.
 
+<p align="center"><img src="docs/primary.png" alt="Talent Stage showing all three trees" width="100%"></p>
+
+<p align="center">
+  <a href="docs/import.png"><img src="docs/import.png" alt="Importing a build code" width="32%"></a>
+  <a href="docs/coonfirmprogressbar.png"><img src="docs/coonfirmprogressbar.png" alt="Confirming staged points" width="32%"></a>
+</p>
+
 ## Features
 
 - All three trees rendered together, sized to the tree's actual data —
   no fixed grid assumptions.
-- Stage points across multiple talents, in any order, then confirm them all
-  in one batch — no more one-point-at-a-time clicking and waiting.
+- **Stage before you spend**: plan across all three trees, confirm or clear,
+  never misclick a permanent point.
+- **See it land**: staged glow, live progress bar, and a lock-in flash with
+  sound as each confirm run applies.
 - Prereq connector lines drawn from the tree's real prerequisite data, gold
-  when met and gray when not, including diagonal branches.
-- Build import/export via a compact text code, compatible with the codes
-  produced by octowow.st's talent calculator.
-- Matches your existing UI: detects pfUI or ElvUI and skins itself with
-  their frame styling, falling back to a plain border when neither is
-  loaded.
+  when met and gray when not — a prereq line only lights up once its source
+  talent is fully maxed, not just started.
+- Right-click a staged talent to unstage it.
+- Import/export build codes compatible with octowow.st's talent calculator,
+  applying through the same progress bar as a manual confirm.
+- Reads real server talent data live, no hardcoded tree layout — works on
+  modified trees (see [Compatibility note](#compatibility-note)).
 
 ## Installation
 
-1. Download this repository (clone it, or grab a release zip) and copy the
-   `Interface/AddOns/TalentStage` folder into your WoW installation's
-   `Interface/AddOns/` directory.
-2. Launch the game, or if it's already running, type `/reload`.
-3. Open your talent pane as usual (default `N` keybind, or the
-   micro-menu button) — Talent Stage replaces it automatically.
+1. Download this repository as a zip, or `git clone` it.
+2. If you downloaded a zip, extract it — it unpacks to a folder named
+   `talent-stage-master`.
+3. Rename that folder to exactly `TalentStage` (not "Talent Stage", not
+   "talent-stage") — it must match the addon's `.toc` filename exactly, or
+   the addon will silently fail to load with no error.
+4. Move the `TalentStage` folder into `Interface/AddOns/` in your WoW
+   installation.
+5. Launch WoW, or `/reload` if it's already running.
 
-Useful slash commands: `/ts` or `/talentstage` (with no arguments, lists the
-available subcommands).
+Open your talent pane as usual (default `N` keybind, or the micro-menu
+button) — Talent Stage replaces it automatically. Useful slash commands:
+`/ts` or `/talentstage` (with no arguments, lists the available
+subcommands).
 
 ## Compatibility note
 
