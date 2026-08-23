@@ -77,7 +77,6 @@ TS.COLOR = {
 	lockedEdge   = { 0.235, 0.204, 0.153 },
 	lockedIcon   = { 0.329, 0.298, 0.231 },
 	pending      = { 0.949, 0.839, 0.459 },
-	sandboxText  = { 0.941, 0.659, 0.408 },
 }
 
 TS.POLL_INTERVAL = 0.5 -- seconds; periodic safety-net refresh while the
@@ -361,13 +360,6 @@ function TalentStage_BuildUI()
 	title:SetTextColor(TS.COLOR.goldBright[1], TS.COLOR.goldBright[2], TS.COLOR.goldBright[3])
 	title:SetText("Talent Stage")
 	TalentStageFrame.title = title
-
-	local sandboxLabel = TalentStageFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-	sandboxLabel:SetPoint("TOP", title, "BOTTOM", 0, -2)
-	sandboxLabel:SetTextColor(TS.COLOR.sandboxText[1], TS.COLOR.sandboxText[2], TS.COLOR.sandboxText[3])
-	sandboxLabel:SetText("SANDBOX MODE - not saved to character")
-	sandboxLabel:Hide()
-	TS.sandboxLabel = sandboxLabel
 
 	TalentStage_BuildImportRow()
 	TalentStage_BuildLedger()
@@ -792,9 +784,6 @@ function TalentStage_ResetSandbox()
 	-- also drop any staged-but-unconfirmed picks: "reset" means a fully
 	-- blank tree, not just undoing confirmed fake points
 	TS.staged = {}
-	if TS.sandboxLabel then
-		if TS.sandboxMode then TS.sandboxLabel:Show() else TS.sandboxLabel:Hide() end
-	end
 	TalentStage_Refresh()
 end
 
