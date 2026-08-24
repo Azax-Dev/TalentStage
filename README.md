@@ -59,9 +59,7 @@ silently fail to load with no error.
 </details>
 
 Open your talent pane as usual (default `N` keybind, or the micro-menu
-button) — Talent Stage replaces it automatically. Useful slash commands:
-`/ts` or `/talentstage` (with no arguments, lists the available
-subcommands).
+button) — Talent Stage replaces it automatically.
 
 ## Compatibility note
 
