@@ -5,9 +5,8 @@
       <stop offset="100%" stop-color="#0d0a08"/>
     </linearGradient>
     <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
-      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feGaussianBlur stdDeviation="1.5" result="blur"/>
       <feMerge>
-        <feMergeNode in="blur"/>
         <feMergeNode in="blur"/>
         <feMergeNode in="SourceGraphic"/>
       </feMerge>
@@ -27,5 +26,5 @@
 
   <text x="450" y="174" text-anchor="middle"
         font-family="-apple-system, Segoe UI, sans-serif" font-size="15" letter-spacing="1.5"
-        fill="#d9c9a3">A modern talent frame for WoW 1.12 — Turtle WoW · OctoWoW</text>
+        fill="#d9c9a3">A modern talent frame for WoW 1.12 — Turtle WoW · OctoWoW · Capybara Paradise</text>
 </svg>

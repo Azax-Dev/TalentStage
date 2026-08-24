@@ -10,8 +10,8 @@ specialization trees are visible at once, side by side, with no internal
 scrolling — and a **stage-then-confirm** flow, so clicking a talent marks it
 as planned without spending the point until you confirm.
 
-Built for the stock 1.12.1 client used by Turtle WoW and OctoWoW-style
-servers.
+Built for the 1.12-derived client used by Turtle WoW-like servers such as
+OctoWoW and Capybara Paradise.
 
 <p align="center"><img src="docs/primary.png" alt="Talent Stage showing all three trees" width="100%"></p>
 
