@@ -15,10 +15,28 @@ TS.TIER_SPACING    = 58
 TS.PANEL_PAD       = 24
 TS.PANEL_BOTTOM_PAD = 18
 TS.HEADER_HEIGHT   = 62
-TS.TREE_GAP        = 28
 TS.MARGIN          = 16
 TS.TITLE_HEIGHT    = 40
 TS.IMPORT_ROW_HEIGHT = 30
+-- Gap constants are theme-conditional (see TS.activeTheme / TalentStage_ApplySpacingTheme,
+-- called at the top of TalentStage_BuildUI before any layout math runs).
+-- Classic (no matched UI addon) keeps the ORIGINAL tight spacing (confirmed
+-- 2026-08-27: the tester found the widened values genuinely worse for the
+-- default look, not just unnecessary) -- it never needed extra room because
+-- the old decorative UI-Tooltip-Border texture's bevel art visually implied
+-- a seam even at 0px of real gap. pfUI's flat hairline border doesn't, so
+-- pfui gets the wider values fixing the real zero-gap overlap bug from
+-- overlap.png (2026-08-27) that classic never had. TS.TREE_GAP / TS.ROW_GAP
+-- below are the ACTIVE values TalentStage_BuildUI/BuildImportRow/BuildLedger
+-- read -- set at runtime, not fixed constants.
+TS.TREE_GAP_CLASSIC   = 28
+TS.TREE_GAP_PFUI      = 30
+TS.ROW_GAP_CLASSIC    = 0
+TS.ROW_GAP_PFUI       = 6
+TS.IMPORT_GAP_CLASSIC = { boxToImport = -8, importToExport = -6 }
+TS.IMPORT_GAP_PFUI    = { boxToImport = -10, importToExport = -8 }
+TS.LEDGER_GAP_CLASSIC = -6
+TS.LEDGER_GAP_PFUI    = -8
 TS.LEDGER_HEIGHT   = 68
 TS.QUEUE_FALLBACK_DELAY = 1.0 -- seconds; LearnTalent has a short server-side
                                -- delay between calls, this is a safety net in
@@ -43,6 +61,13 @@ TS.QUEUE_FALLBACK_DELAY = 1.0 -- seconds; LearnTalent has a short server-side
 -- per-character), set via the gear button on the main frame -- see
 -- TalentStage_LoadTreeArtOptions / TalentStage_BuildTreeArtSettings.
 TS.TREE_ART_OPTION_DEFAULTS = { showTreeArt = true, treeArtAlpha = 0.35 }
+
+-- UI-theme matching: on by default, reskins TalentStage's own hand-rolled
+-- backdrops/buttons to match whichever supported UI addon is installed,
+-- instead of clashing with the rest of the player's UI (see CLAUDE.md "Hard
+-- requirement: border inherits from the active UI addon"). pfUI only for
+-- this first pass -- ElvUI support is the same idea, deliberately deferred.
+TS.THEME_OPTION_DEFAULTS = { matchUITheme = true }
 TS.TREE_BG_TEXTURES = {
 	ROGUE = {
 		[1] = { 0.00, 0.25, 0, 1 }, -- Assassination: left panel
@@ -252,9 +277,30 @@ function TalentStage_ApplyPlainBackdrop(frame, alpha, bg, border)
 	frame:SetBackdropBorderColor(border[1], border[2], border[3], 1)
 end
 
+-- Picks the active gap constants for this build based on whether the pfUI
+-- skin will actually be applied (TalentStage_DetectUIThemeAddon), so the
+-- layout math below and TalentStage_ApplyPfUISkin later agree on the same
+-- theme -- called once, up front, before any panel/row is positioned.
+function TalentStage_ApplySpacingTheme()
+	TS.activeTheme = TalentStage_DetectUIThemeAddon()
+	if TS.activeTheme == "pfui" then
+		TS.TREE_GAP = TS.TREE_GAP_PFUI
+		TS.ROW_GAP = TS.ROW_GAP_PFUI
+		TS.importGap = TS.IMPORT_GAP_PFUI
+		TS.ledgerGap = TS.LEDGER_GAP_PFUI
+	else
+		TS.TREE_GAP = TS.TREE_GAP_CLASSIC
+		TS.ROW_GAP = TS.ROW_GAP_CLASSIC
+		TS.importGap = TS.IMPORT_GAP_CLASSIC
+		TS.ledgerGap = TS.LEDGER_GAP_CLASSIC
+	end
+end
+
 function TalentStage_BuildUI()
 	TS.built = true
 	TalentStage_LoadTreeArtOptions()
+	TalentStage_LoadThemeOptions()
+	TalentStage_ApplySpacingTheme()
 
 	local numTabs = GetNumTalentTabs()
 	local totalWidth = TS.MARGIN
@@ -287,7 +333,7 @@ function TalentStage_BuildUI()
 		local panel = CreateFrame("Frame", "TalentStagePanel"..tab, TalentStageFrame)
 		panel:SetWidth(panelWidth)
 		panel:SetHeight(panelHeight)
-		panel:SetPoint("TOPLEFT", TalentStageFrame, "TOPLEFT", totalWidth, -(TS.TITLE_HEIGHT + TS.IMPORT_ROW_HEIGHT))
+		panel:SetPoint("TOPLEFT", TalentStageFrame, "TOPLEFT", totalWidth, -(TS.TITLE_HEIGHT + TS.IMPORT_ROW_HEIGHT + TS.ROW_GAP))
 
 		panel:SetBackdrop(TS.PANEL_BACKDROP)
 		panel:SetBackdropColor(TS.COLOR.panel2[1], TS.COLOR.panel2[2], TS.COLOR.panel2[3], 0.85)
@@ -400,7 +446,7 @@ function TalentStage_BuildUI()
 	-- (the loop above adds it unconditionally each iteration); drop it here
 	-- so the frame ends at the last tree plus a plain right-side margin,
 	-- instead of a full tree-gap-sized gap plus that margin stacked together.
-	local totalHeight = TS.TITLE_HEIGHT + TS.IMPORT_ROW_HEIGHT + maxPanelHeight + TS.LEDGER_HEIGHT
+	local totalHeight = TS.TITLE_HEIGHT + TS.IMPORT_ROW_HEIGHT + TS.ROW_GAP + maxPanelHeight + TS.ROW_GAP + TS.LEDGER_HEIGHT
 	TalentStageFrame:SetWidth(totalWidth - TS.TREE_GAP + TS.MARGIN)
 	TalentStageFrame:SetHeight(totalHeight)
 
@@ -416,6 +462,7 @@ function TalentStage_BuildUI()
 	TalentStage_BuildLedger()
 	TalentStage_BuildSettings()
 	TalentStage_BuildTreeArtSettings()
+	TalentStage_ApplyUITheme()
 end
 
 --------------------------------------------------------------------------
@@ -631,18 +678,19 @@ function TalentStage_BuildImportRow()
 	local importBtn = CreateFrame("Button", "TalentStageImportButton", row, "UIPanelButtonTemplate")
 	importBtn:SetWidth(70)
 	importBtn:SetHeight(22)
-	importBtn:SetPoint("RIGHT", exportBtn, "LEFT", -6, 0)
+	importBtn:SetPoint("RIGHT", exportBtn, "LEFT", TS.importGap.importToExport, 0)
 	importBtn:SetText("Import")
 	importBtn:SetScript("OnClick", TalentStage_OnImportClick)
 	TS.importButton = importBtn
 
 	local editBg = CreateFrame("Frame", "TalentStageImportBox", row)
 	editBg:SetPoint("LEFT", row, "LEFT", 0, -4)
-	editBg:SetPoint("RIGHT", importBtn, "LEFT", -8, 0)
+	editBg:SetPoint("RIGHT", importBtn, "LEFT", TS.importGap.boxToImport, 0)
 	editBg:SetHeight(22)
 	editBg:SetBackdrop(TS.INPUT_BACKDROP)
 	editBg:SetBackdropColor(TS.COLOR.panel2[1], TS.COLOR.panel2[2], TS.COLOR.panel2[3], 0.9)
 	editBg:SetBackdropBorderColor(TS.COLOR.edgeBright[1], TS.COLOR.edgeBright[2], TS.COLOR.edgeBright[3], 1)
+	TS.importBox = editBg
 
 	local clearBtn = CreateFrame("Button", "TalentStageImportClearButton", editBg)
 	clearBtn:SetWidth(14)
@@ -722,6 +770,140 @@ function TalentStage_LoadTreeArtOptions()
 	end
 end
 
+-- Standard Blizzard StaticPopup confirmation, the same pattern pfUI and
+-- most other addons use for a setting that only takes effect after a UI
+-- reload (pfUI's own equivalent is pfUI.api.CreateQuestionDialog, but
+-- that's only available when pfUI is loaded -- this option exists whether
+-- or not pfUI is installed, so it needs a plain vanilla StaticPopup
+-- instead of a pfUI-dependent one). Registered once at file load.
+StaticPopupDialogs["TALENTSTAGE_RELOADUI"] = {
+	text = "TalentStage: this setting requires a UI reload to take effect. Reload now?",
+	button1 = "Reload Now",
+	button2 = "Later",
+	OnAccept = function() ReloadUI() end,
+	timeout = 0,
+	whileDead = 1,
+	hideOnEscape = 1,
+}
+
+function TalentStage_PromptReloadUI()
+	StaticPopup_Show("TALENTSTAGE_RELOADUI")
+end
+
+function TalentStage_LoadThemeOptions()
+	TalentStageOptionsDB = TalentStageOptionsDB or {}
+	if TalentStageOptionsDB.matchUITheme == nil then
+		TalentStageOptionsDB.matchUITheme = TS.THEME_OPTION_DEFAULTS.matchUITheme
+	end
+end
+
+--------------------------------------------------------------------------
+-- UI theme matching: reskins TalentStage's own hand-rolled backdrops and
+-- plain buttons (frame borders, tree panel boxes, import/export row,
+-- ledger bar, settings popups) to match a supported UI addon, the same way
+-- pfUI's own bundled skins do for the default Blizzard talent frame and
+-- the escape menu (pfUI/skins/blizzard/talents.lua, .../game_menu.lua --
+-- read directly as the reference for this). Talent tile buttons themselves
+-- are deliberately NOT touched here: their locked/available/staged/
+-- confirmed/maxed states are custom-drawn per CLAUDE.md "Phase 2" and get
+-- their own dedicated retune pass later, not folded into generic addon
+-- skinning. Applied once at build time only -- there's no live revert path
+-- back to the hand-rolled skin once pfUI has stripped a button's default
+-- textures, so toggling the checkbox just asks for a reopen/reload instead
+-- of pretending to apply instantly.
+--------------------------------------------------------------------------
+
+function TalentStage_DetectUIThemeAddon()
+	if not TalentStageOptionsDB.matchUITheme then
+		return nil
+	end
+	if IsAddOnLoaded("pfUI") then
+		return "pfui"
+	end
+	return nil
+end
+
+function TalentStage_ApplyUITheme()
+	-- TEMP DEBUG (2026-08-27): prints every time the talent frame is first
+	-- built each session, so a stale/uncached addon copy (or the TS.built
+	-- once-per-session guard skipping a rebuild) is visible in chat instead
+	-- of silently indistinguishable from a real re-skin. Remove once the
+	-- spacing fix is confirmed live in-game.
+	DEFAULT_CHAT_FRAME:AddMessage("TalentStage DEBUG: ApplyUITheme running, matchUITheme="..tostring(TalentStageOptionsDB.matchUITheme).." pfUILoaded="..tostring(IsAddOnLoaded("pfUI")).." TREE_GAP="..tostring(TS.TREE_GAP))
+
+	local theme = TalentStage_DetectUIThemeAddon()
+	if theme == "pfui" then
+		TalentStage_ApplyPfUISkin()
+		DEFAULT_CHAT_FRAME:AddMessage("TalentStage DEBUG: pfUI skin applied.")
+	end
+	-- no match (or option off): leave the hand-rolled skin already applied
+	-- by the Build* functions above untouched.
+end
+
+-- 'legacy=true' throughout (pfUI.api.CreateBackdrop's 3rd arg): applies the
+-- backdrop directly via SetBackdrop on the frame itself instead of pfUI's
+-- newer floating-child-frame style, matching what our own
+-- TalentStage_ApplyPlainBackdrop already does -- keeps every skinned frame
+-- a single SetBackdrop call, no extra child frames to anchor around.
+function TalentStage_ApplyPfUISkin()
+	local api = pfUI.api
+
+	-- Border color/thickness comes entirely from the player's own pfUI
+	-- config now (plain `nil` inset, same as pfUI's own talents.lua/
+	-- game_menu.lua skins) -- an earlier version of this function forced a
+	-- gold accent color here to guarantee contrast between adjacent panels,
+	-- but that was masking a real zero-pixel-gap layout bug (see CLAUDE.md
+	-- "UI theme matching", third follow-up, 2026-08-27) rather than a border
+	-- problem. Now that the actual gap exists (TS.ROW_GAP / TS.TREE_GAP),
+	-- pfUI's native border color is enough to separate boxes, and using it
+	-- as-is is what "match UI theme" is actually supposed to mean -- forcing
+	-- our own color defeated the point (tester feedback: "boarders are
+	-- yellow which is not on theme for pfui").
+	api.StripTextures(TalentStageFrame)
+	TalentStageFrame:SetBackdrop(nil)
+	api.CreateBackdrop(TalentStageFrame, nil, true, .92)
+	api.CreateBackdropShadow(TalentStageFrame)
+	api.SkinCloseButton(TalentStageCloseButton, TalentStageFrame, -6, -6)
+
+	for tab, panel in pairs(TS.panels) do
+		panel:SetBackdrop(nil)
+		api.CreateBackdrop(panel, nil, true, .85)
+	end
+
+	if TS.importBox then
+		TS.importBox:SetBackdrop(nil)
+		api.CreateBackdrop(TS.importBox, nil, true, .9)
+	end
+	if TS.importButton then api.SkinButton(TS.importButton) end
+	if TS.exportButton then api.SkinButton(TS.exportButton) end
+
+	if TS.ledgerBar then
+		TS.ledgerBar:SetBackdrop(nil)
+		api.CreateBackdrop(TS.ledgerBar, nil, true, .85)
+	end
+	if TS.confirmButton then api.SkinButton(TS.confirmButton) end
+	if TS.clearButton then api.SkinButton(TS.clearButton) end
+
+	for _, panel in pairs({ TS.artSettingsPanel, TS.settingsPanel }) do
+		if panel then
+			panel:SetBackdrop(nil)
+			api.CreateBackdrop(panel, nil, true, .95)
+			api.CreateBackdropShadow(panel)
+		end
+	end
+	if TS.artSettingsCloseButton then api.SkinCloseButton(TS.artSettingsCloseButton, TS.artSettingsPanel, -6, -6) end
+	if TS.settingsCloseButton then api.SkinCloseButton(TS.settingsCloseButton, TS.settingsPanel, -6, -6) end
+
+	if TS.artSettingsCheck then api.SkinCheckbox(TS.artSettingsCheck) end
+	if TS.artSettingsSlider then api.SkinSlider(TS.artSettingsSlider) end
+	if TS.themeMatchCheck then api.SkinCheckbox(TS.themeMatchCheck) end
+	if TS.sandboxCheck then api.SkinCheckbox(TS.sandboxCheck) end
+	for _, check in pairs(TS.sandboxLevelChecks or {}) do
+		api.SkinCheckbox(check, 18)
+	end
+	if TS.sandboxResetButton then api.SkinButton(TS.sandboxResetButton) end
+end
+
 -- Re-applies the current showTreeArt/treeArtAlpha settings to every already-
 -- built tree panel's background texture, so the checkbox/slider update live
 -- without needing to close and reopen the talent frame.
@@ -772,8 +954,8 @@ function TalentStage_BuildTreeArtSettings()
 	TS.artSettingsButton = gearBtn
 
 	local panel = CreateFrame("Frame", "TalentStageArtSettingsPanel", UIParent)
-	panel:SetWidth(220)
-	panel:SetHeight(120)
+	panel:SetWidth(230)
+	panel:SetHeight(198)
 	panel:SetPoint("TOPRIGHT", TalentStageFrame, "TOPLEFT", -8, 0)
 	panel:SetFrameStrata("DIALOG")
 	panel:SetToplevel(true)
@@ -785,9 +967,10 @@ function TalentStage_BuildTreeArtSettings()
 	-- above) so Escape closes this panel like any other UI window.
 	tinsert(UISpecialFrames, "TalentStageArtSettingsPanel")
 
-	local close = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
+	local close = CreateFrame("Button", "TalentStageArtSettingsCloseButton", panel, "UIPanelCloseButton")
 	close:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -2, -2)
 	close:SetScript("OnClick", function() panel:Hide() end)
+	TS.artSettingsCloseButton = close
 
 	local heading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	heading:SetPoint("TOPLEFT", panel, "TOPLEFT", 14, -10)
@@ -795,13 +978,17 @@ function TalentStage_BuildTreeArtSettings()
 
 	-- First section: talent tree art. More sections (their own sub-heading
 	-- plus controls) get added below this one as they're built, same panel.
+	-- Explicit row-by-row y-offsets below (not accumulated from a running
+	-- cursor) so each row's spacing is easy to eyeball/adjust independently
+	-- -- see CLAUDE.md "UI theme matching" for the 2026-08-27 pass that
+	-- widened this out from a cramped original layout.
 	local sectionHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-	sectionHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", 14, -30)
+	sectionHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", 14, -32)
 	sectionHeading:SetTextColor(TS.COLOR.parchment[1], TS.COLOR.parchment[2], TS.COLOR.parchment[3])
 	sectionHeading:SetText("Talent Tree Art")
 
 	local check = CreateFrame("CheckButton", "TalentStageArtSettingsCheck", panel, "UICheckButtonTemplate")
-	check:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, -48)
+	check:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, -50)
 	getglobal("TalentStageArtSettingsCheckText"):SetText("Show spec art")
 	check:SetScript("OnClick", function()
 		TalentStageOptionsDB.showTreeArt = this:GetChecked() and true or false
@@ -810,7 +997,7 @@ function TalentStage_BuildTreeArtSettings()
 	TS.artSettingsCheck = check
 
 	local slider = CreateFrame("Slider", "TalentStageArtSettingsSlider", panel, "OptionsSliderTemplate")
-	slider:SetPoint("TOP", panel, "TOP", 0, -80)
+	slider:SetPoint("TOP", panel, "TOP", 0, -88)
 	slider:SetWidth(190)
 	slider:SetHeight(16)
 	slider:SetMinMaxValues(0, 100)
@@ -828,6 +1015,33 @@ function TalentStage_BuildTreeArtSettings()
 	-- handler above so this initial sync also runs through it harmlessly)
 	check:SetChecked(TalentStageOptionsDB.showTreeArt)
 	slider:SetValue(TalentStageOptionsDB.treeArtAlpha * 100)
+
+	-- Second section: UI theme matching (see TalentStage_LoadThemeOptions /
+	-- TalentStage_ApplyUITheme). Takes effect the next time TalentStageFrame
+	-- is built -- reskinning already-built buttons live isn't supported yet
+	-- -- so flipping this prompts the standard Blizzard-style reload
+	-- confirmation popup (TalentStage_PromptReloadUI), the same pattern
+	-- pfUI/most addons use for a setting that needs a UI reload, rather than
+	-- just a chat message.
+	local themeSectionHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	themeSectionHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", 14, -124)
+	themeSectionHeading:SetTextColor(TS.COLOR.parchment[1], TS.COLOR.parchment[2], TS.COLOR.parchment[3])
+	themeSectionHeading:SetText("UI Theme")
+
+	local themeCheck = CreateFrame("CheckButton", "TalentStageThemeMatchCheck", panel, "UICheckButtonTemplate")
+	themeCheck:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, -142)
+	local themeCheckText = getglobal("TalentStageThemeMatchCheckText")
+	themeCheckText:SetFontObject(GameFontNormalSmall)
+	themeCheckText:SetText("Match UI theme (pfUI)")
+	local themeReloadHint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	themeReloadHint:SetPoint("TOPLEFT", themeCheck, "BOTTOMLEFT", 26, 2)
+	themeReloadHint:SetText("(requires reload)")
+	themeCheck:SetScript("OnClick", function()
+		TalentStageOptionsDB.matchUITheme = this:GetChecked() and true or false
+		TalentStage_PromptReloadUI()
+	end)
+	themeCheck:SetChecked(TalentStageOptionsDB.matchUITheme)
+	TS.themeMatchCheck = themeCheck
 end
 
 --------------------------------------------------------------------------
@@ -858,9 +1072,10 @@ function TalentStage_BuildSettings()
 	panel:Hide()
 	TS.settingsPanel = panel
 
-	local close = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
+	local close = CreateFrame("Button", "TalentStageSettingsCloseButton", panel, "UIPanelCloseButton")
 	close:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -4, -4)
 	close:SetScript("OnClick", function() panel:Hide() end)
+	TS.settingsCloseButton = close
 
 	local heading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	heading:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD, -10)
@@ -975,6 +1190,7 @@ function TalentStage_BuildLedger()
 	bar:SetBackdrop(TS.PANEL_BACKDROP)
 	bar:SetBackdropColor(TS.COLOR.panel2[1], TS.COLOR.panel2[2], TS.COLOR.panel2[3], 0.85)
 	bar:SetBackdropBorderColor(TS.COLOR.edgeBright[1], TS.COLOR.edgeBright[2], TS.COLOR.edgeBright[3], 1)
+	TS.ledgerBar = bar
 
 	local text = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	text:SetPoint("LEFT", bar, "LEFT", 16, 0)
@@ -1002,7 +1218,7 @@ function TalentStage_BuildLedger()
 	local clearBtn = CreateFrame("Button", "TalentStageClearButton", bar, "UIPanelButtonTemplate")
 	clearBtn:SetWidth(90)
 	clearBtn:SetHeight(22)
-	clearBtn:SetPoint("RIGHT", confirmBtn, "LEFT", -6, 0)
+	clearBtn:SetPoint("RIGHT", confirmBtn, "LEFT", TS.ledgerGap, 0)
 	clearBtn:SetText("Clear")
 	clearBtn:SetScript("OnClick", TalentStage_ClearStaged)
 	TS.clearButton = clearBtn
