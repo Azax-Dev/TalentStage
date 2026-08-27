@@ -43,7 +43,7 @@ OctoWoW and Capybara Paradise.
 extra steps.
 
 1. Download the latest release: [Releases
-   page](https://github.com/Azax-Dev/talent-stage/releases/latest).
+   page](https://github.com/Azax-Dev/TalentStage/releases/latest).
 2. Extract it — you'll get a `TalentStage` folder, ready to use as-is.
 3. Move it into `Interface/AddOns/` in your WoW installation.
 4. Launch WoW, or `/reload` if it's already running.
