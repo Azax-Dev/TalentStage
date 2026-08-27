@@ -1,8 +1,0 @@
-## Interface: 11200
-## Title: |cffff3df0Talent Stage|r |cff8d7f68[Azax]|r
-## Notes: Standalone redesigned talent UI - phase 1 (all three trees visible, stage-then-confirm). No pfUI/ElvUI dependency.
-## Author: Azax
-## Version: 0.1
-## SavedVariables: TalentStageDumpDB
-
-TalentStage.xml
