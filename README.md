@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/banner.svg" alt="Talent Stage"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/Azax-Dev/TalentStage/media/docs/banner.svg" alt="Talent Stage"></p>
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/azaxuk)
@@ -13,11 +13,11 @@ as planned without spending the point until you confirm.
 Built for the 1.12-derived client used by Turtle WoW-like servers such as
 OctoWoW and Capybara Paradise.
 
-<p align="center"><img src="docs/primary.png" alt="Talent Stage showing all three trees" width="100%"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/Azax-Dev/TalentStage/media/docs/primary.png" alt="Talent Stage showing all three trees" width="100%"></p>
 
 <p align="center">
-  <a href="docs/import.png"><img src="docs/import.png" alt="Importing a build code" width="32%"></a>
-  <a href="docs/coonfirmprogressbar.png"><img src="docs/coonfirmprogressbar.png" alt="Confirming staged points" width="32%"></a>
+  <a href="https://raw.githubusercontent.com/Azax-Dev/TalentStage/media/docs/import.png"><img src="https://raw.githubusercontent.com/Azax-Dev/TalentStage/media/docs/import.png" alt="Importing a build code" width="32%"></a>
+  <a href="https://raw.githubusercontent.com/Azax-Dev/TalentStage/media/docs/coonfirmprogressbar.png"><img src="https://raw.githubusercontent.com/Azax-Dev/TalentStage/media/docs/coonfirmprogressbar.png" alt="Confirming staged points" width="32%"></a>
 </p>
 
 ## Features
