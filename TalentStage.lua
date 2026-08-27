@@ -24,6 +24,33 @@ TS.QUEUE_FALLBACK_DELAY = 1.0 -- seconds; LearnTalent has a short server-side
                                -- delay between calls, this is a safety net in
                                -- case TALENT_UPDATE never fires for a call.
 
+-- [ Tree background art: dev test, Rogue only ]
+-- One shared texture per class, tab N reads a 1/numTabs horizontal slice via
+-- SetTexCoord -- mirrors the rogue-talent-redesign-v3-treebg.html demo's
+-- background-position trick instead of shipping one cropped file per tree.
+-- Source art is a Gemini generation (docs/Rogue/rogue3.jpeg), resized to
+-- 768x512 (3 panels of 256x512) then padded onto a 1024x512 canvas --
+-- vanilla's texture loader needs power-of-two dimensions, and confirmed
+-- in-game that anything as large as 2048x1024 silently fails to load on
+-- this client even though it's p-o-t; 1024x512 is the first size that
+-- actually rendered. Real content only fills the left 0.75 of the
+-- texture's u range; the remaining 0.25 is transparent padding. Saved as
+-- an uncompressed 32-bit TGA (this client build reads .tga fine -- pfUI
+-- and ElvUI both ship them). Not wired for any other class yet; see
+-- CLAUDE.md backlog note on theming.
+--
+-- User-facing toggle/opacity now live in TalentStageOptionsDB (SavedVariables,
+-- per-character), set via the gear button on the main frame -- see
+-- TalentStage_LoadTreeArtOptions / TalentStage_BuildTreeArtSettings.
+TS.TREE_ART_OPTION_DEFAULTS = { showTreeArt = true, treeArtAlpha = 0.35 }
+TS.TREE_BG_TEXTURES = {
+	ROGUE = {
+		[1] = { 0.00, 0.25, 0, 1 }, -- Assassination: left panel
+		[2] = { 0.25, 0.50, 0, 1 }, -- Combat: middle panel
+		[3] = { 0.50, 0.75, 0, 1 }, -- Subtlety: right panel
+	},
+}
+
 TS.PLAIN_BACKDROP = {
 	bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
 	edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
@@ -165,6 +192,9 @@ function TalentStageFrame_OnHide()
 	-- staged points intentionally persist across hide/show so the player can
 	-- close and reopen without losing an in-progress plan.
 	PlaySound("TalentScreenClose")
+	if TS.artSettingsPanel and TS.artSettingsPanel:IsVisible() then
+		TS.artSettingsPanel:Hide()
+	end
 end
 
 -- A persistent ticker independent of frame visibility: OnUpdate does not fire
@@ -224,6 +254,7 @@ end
 
 function TalentStage_BuildUI()
 	TS.built = true
+	TalentStage_LoadTreeArtOptions()
 
 	local numTabs = GetNumTalentTabs()
 	local totalWidth = TS.MARGIN
@@ -261,6 +292,26 @@ function TalentStage_BuildUI()
 		panel:SetBackdrop(TS.PANEL_BACKDROP)
 		panel:SetBackdropColor(TS.COLOR.panel2[1], TS.COLOR.panel2[2], TS.COLOR.panel2[3], 0.85)
 		panel:SetBackdropBorderColor(TS.COLOR.edgeBright[1], TS.COLOR.edgeBright[2], TS.COLOR.edgeBright[3], 1)
+
+		do
+			local _, engClass = UnitClass("player")
+			local bgCoords = TS.TREE_BG_TEXTURES[engClass] and TS.TREE_BG_TEXTURES[engClass][tab]
+			if bgCoords then
+				-- BACKGROUND, not ARTWORK: the panel's own backdrop border
+				-- (set below via SetBackdropBorderColor) draws on the BORDER
+				-- layer, which sits above ARTWORK -- an ARTWORK-layer texture
+				-- at any real opacity painted straight over that border.
+				local bg = panel:CreateTexture(nil, "BACKGROUND")
+				bg:SetAllPoints(panel)
+				bg:SetTexture("Interface\\AddOns\\TalentStage\\Art\\TreeBG_"..engClass..".tga")
+				bg:SetTexCoord(bgCoords[1], bgCoords[2], bgCoords[3], bgCoords[4])
+				bg:SetAlpha(TalentStageOptionsDB.treeArtAlpha)
+				if not TalentStageOptionsDB.showTreeArt then
+					bg:Hide()
+				end
+				panel.bgTexture = bg
+			end
+		end
 
 		local header = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 		header:SetPoint("TOP", panel, "TOP", 0, -8)
@@ -364,6 +415,7 @@ function TalentStage_BuildUI()
 	TalentStage_BuildImportRow()
 	TalentStage_BuildLedger()
 	TalentStage_BuildSettings()
+	TalentStage_BuildTreeArtSettings()
 end
 
 --------------------------------------------------------------------------
@@ -651,6 +703,131 @@ function TalentStage_BuildImportRow()
 	TalentStage_UpdateImportHint()
 
 	TS.importRow = row
+end
+
+--------------------------------------------------------------------------
+-- Tree art settings: user-facing gear button (top-left of the main frame,
+-- mirrors the close button's top-right placement) opening a small popup
+-- with a "show spec art" checkbox and an opacity slider. Separate from the
+-- dev-only sandbox settings panel below -- this one ships to real players.
+--------------------------------------------------------------------------
+
+function TalentStage_LoadTreeArtOptions()
+	TalentStageOptionsDB = TalentStageOptionsDB or {}
+	if TalentStageOptionsDB.showTreeArt == nil then
+		TalentStageOptionsDB.showTreeArt = TS.TREE_ART_OPTION_DEFAULTS.showTreeArt
+	end
+	if TalentStageOptionsDB.treeArtAlpha == nil then
+		TalentStageOptionsDB.treeArtAlpha = TS.TREE_ART_OPTION_DEFAULTS.treeArtAlpha
+	end
+end
+
+-- Re-applies the current showTreeArt/treeArtAlpha settings to every already-
+-- built tree panel's background texture, so the checkbox/slider update live
+-- without needing to close and reopen the talent frame.
+function TalentStage_ApplyTreeArtSettings()
+	for tab, panel in pairs(TS.panels) do
+		if panel.bgTexture then
+			panel.bgTexture:SetAlpha(TalentStageOptionsDB.treeArtAlpha)
+			if TalentStageOptionsDB.showTreeArt then
+				panel.bgTexture:Show()
+			else
+				panel.bgTexture:Hide()
+			end
+		end
+	end
+end
+
+function TalentStage_ToggleTreeArtSettingsPanel()
+	if TS.artSettingsPanel:IsVisible() then
+		TS.artSettingsPanel:Hide()
+	else
+		TS.artSettingsPanel:Show()
+	end
+end
+
+function TalentStage_BuildTreeArtSettings()
+	local gearBtn = CreateFrame("Button", "TalentStageArtSettingsButton", TalentStageFrame)
+	gearBtn:SetWidth(20)
+	gearBtn:SetHeight(20)
+	gearBtn:SetPoint("TOPLEFT", TalentStageFrame, "TOPLEFT", TS.MARGIN - 4, -10)
+
+	local icon = gearBtn:CreateTexture(nil, "ARTWORK")
+	icon:SetAllPoints(gearBtn)
+	-- INV_Misc_Gear_01: a plain gear/cog icon (confirmed present in this
+	-- client's interface.MPQ) -- reads as a generic "settings" icon, unlike
+	-- Trade_Engineering's busier workbench/goggles art.
+	icon:SetTexture("Interface\\Icons\\INV_Misc_Gear_01")
+	icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+	gearBtn.icon = icon
+
+	gearBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+	gearBtn:SetScript("OnClick", TalentStage_ToggleTreeArtSettingsPanel)
+	gearBtn:SetScript("OnEnter", function()
+		GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+		GameTooltip:SetText("Settings")
+		GameTooltip:Show()
+	end)
+	gearBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	TS.artSettingsButton = gearBtn
+
+	local panel = CreateFrame("Frame", "TalentStageArtSettingsPanel", UIParent)
+	panel:SetWidth(220)
+	panel:SetHeight(120)
+	panel:SetPoint("TOPRIGHT", TalentStageFrame, "TOPLEFT", -8, 0)
+	panel:SetFrameStrata("DIALOG")
+	panel:SetToplevel(true)
+	panel:EnableMouse(true)
+	TalentStage_ApplyPlainBackdrop(panel, 0.95)
+	panel:Hide()
+	TS.artSettingsPanel = panel
+	-- Standard vanilla mechanism (see TalentStageFrame's own registration
+	-- above) so Escape closes this panel like any other UI window.
+	tinsert(UISpecialFrames, "TalentStageArtSettingsPanel")
+
+	local close = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
+	close:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -2, -2)
+	close:SetScript("OnClick", function() panel:Hide() end)
+
+	local heading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	heading:SetPoint("TOPLEFT", panel, "TOPLEFT", 14, -10)
+	heading:SetText("Settings")
+
+	-- First section: talent tree art. More sections (their own sub-heading
+	-- plus controls) get added below this one as they're built, same panel.
+	local sectionHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	sectionHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", 14, -30)
+	sectionHeading:SetTextColor(TS.COLOR.parchment[1], TS.COLOR.parchment[2], TS.COLOR.parchment[3])
+	sectionHeading:SetText("Talent Tree Art")
+
+	local check = CreateFrame("CheckButton", "TalentStageArtSettingsCheck", panel, "UICheckButtonTemplate")
+	check:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, -48)
+	getglobal("TalentStageArtSettingsCheckText"):SetText("Show spec art")
+	check:SetScript("OnClick", function()
+		TalentStageOptionsDB.showTreeArt = this:GetChecked() and true or false
+		TalentStage_ApplyTreeArtSettings()
+	end)
+	TS.artSettingsCheck = check
+
+	local slider = CreateFrame("Slider", "TalentStageArtSettingsSlider", panel, "OptionsSliderTemplate")
+	slider:SetPoint("TOP", panel, "TOP", 0, -80)
+	slider:SetWidth(190)
+	slider:SetHeight(16)
+	slider:SetMinMaxValues(0, 100)
+	slider:SetValueStep(1)
+	getglobal("TalentStageArtSettingsSliderLow"):SetText("0%")
+	getglobal("TalentStageArtSettingsSliderHigh"):SetText("100%")
+	getglobal("TalentStageArtSettingsSliderText"):SetText("Opacity")
+	slider:SetScript("OnValueChanged", function()
+		TalentStageOptionsDB.treeArtAlpha = this:GetValue() / 100
+		TalentStage_ApplyTreeArtSettings()
+	end)
+	TS.artSettingsSlider = slider
+
+	-- initialize widget states from the loaded DB (set after the OnValueChanged
+	-- handler above so this initial sync also runs through it harmlessly)
+	check:SetChecked(TalentStageOptionsDB.showTreeArt)
+	slider:SetValue(TalentStageOptionsDB.treeArtAlpha * 100)
 end
 
 --------------------------------------------------------------------------

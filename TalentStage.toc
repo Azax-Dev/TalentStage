@@ -3,6 +3,6 @@
 ## Notes: Standalone redesigned talent UI - phase 1 (all three trees visible, stage-then-confirm). No pfUI/ElvUI dependency.
 ## Author: Azax
 ## Version: 0.1
-## SavedVariables: TalentStageDumpDB
+## SavedVariables: TalentStageDumpDB, TalentStageOptionsDB
 
 TalentStage.xml
