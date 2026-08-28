@@ -200,9 +200,6 @@ tinsert(UISpecialFrames, "TalentStageFrame")
 --------------------------------------------------------------------------
 
 function ToggleTalentFrame()
-	if UnitLevel("player") < 10 then
-		return
-	end
 	if TalentStageFrame:IsVisible() then
 		TalentStageFrame:Hide()
 	else
