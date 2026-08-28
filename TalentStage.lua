@@ -61,11 +61,7 @@ TS.QUEUE_FALLBACK_DELAY = 1.0 -- seconds; LearnTalent has a short server-side
 -- User-facing toggle/opacity now live in TalentStageOptionsDB (SavedVariables,
 -- per-character), set via the gear button on the main frame -- see
 -- TalentStage_LoadTreeArtOptions / TalentStage_BuildTreeArtSettings.
--- 0.50 matches the tested sweet spot (48-54%) on Rogue, now that every
--- class's texture is luminance-normalized to Rogue's profile (see
--- CLAUDE.md tree-art normalization note) so one shared default holds up
--- across classes instead of only looking right on Rogue.
-TS.TREE_ART_OPTION_DEFAULTS = { showTreeArt = true, treeArtAlpha = 0.50 }
+TS.TREE_ART_OPTION_DEFAULTS = { showTreeArt = true, treeArtAlpha = 0.35 }
 
 -- UI-theme matching: on by default, reskins TalentStage's own hand-rolled
 -- backdrops/buttons to match whichever supported UI addon is installed,
@@ -389,16 +385,57 @@ function TalentStage_BuildUI()
 				-- (set below via SetBackdropBorderColor) draws on the BORDER
 				-- layer, which sits above ARTWORK -- an ARTWORK-layer texture
 				-- at any real opacity painted straight over that border.
-				-- Inset by the backdrop's own edgeSize, not SetAllPoints(panel):
-				-- the border ring occupies the outer edgeSize px of the frame,
-				-- and a full-panel texture paints straight through/under it,
-				-- bleeding past the border on every side.
+				-- Inset by the backdrop's own content inset (not edgeSize,
+				-- and not SetAllPoints) so the art stops where the panel's
+				-- own background color actually starts. edgeSize (16) is
+				-- just the border TEXTURE's pixel width -- most of that
+				-- strip is transparent padding around a much thinner visible
+				-- gold line, and insets.left (4) is where the backdrop
+				-- itself already stops the bg color, i.e. the real visible
+				-- content boundary. Insetting by edgeSize left a ~12px gap
+				-- of plain panel color between the art and the visible
+				-- border line.
 				local bg = panel:CreateTexture(nil, "BACKGROUND")
-				local edgeInset = TS.PANEL_BACKDROP.edgeSize
+				local edgeInset = TS.PANEL_BACKDROP.insets.left
 				bg:SetPoint("TOPLEFT", panel, "TOPLEFT", edgeInset, -edgeInset)
 				bg:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -edgeInset, edgeInset)
 				bg:SetTexture("Interface\\AddOns\\TalentStage\\Art\\TreeBG_"..engClass..".tga")
-				bg:SetTexCoord(bgCoords[1], bgCoords[2], bgCoords[3], bgCoords[4])
+
+				-- Cover-crop, not stretch: each class's slice is a fixed
+				-- 256x512px source image, but panels vary in aspect ratio per
+				-- class (different maxTier/maxCol). Stretching the slice's
+				-- texcoords to exactly fill the inset rect (plain SetTexCoord
+				-- with the raw bgCoords) distorts it, and there's no fixed
+				-- source scale that avoids both overshoot and undershoot
+				-- across every class's panel aspect. This crops the UV rect
+				-- instead (same idea as CSS background-size:cover): keeps
+				-- the source's native pixel aspect intact and always fully
+				-- covers the inset rect, trimming whatever doesn't fit --
+				-- i.e. nothing renders outside the border.
+				local u0, u1, v0, v1 = bgCoords[1], bgCoords[2], bgCoords[3], bgCoords[4]
+				local sliceNativeW, sliceNativeH = 256, 512 -- px, per-class slice on the 1024x512 sheet
+				local nativeAspect = sliceNativeW / sliceNativeH
+				local panelInnerW = panelWidth - 2 * edgeInset
+				local panelInnerH = panelHeight - 2 * edgeInset
+				local targetAspect = panelInnerW / panelInnerH
+
+				local cropW, cropH
+				if targetAspect >= nativeAspect then
+					cropW = sliceNativeW
+					cropH = sliceNativeW / targetAspect
+				else
+					cropH = sliceNativeH
+					cropW = sliceNativeH * targetAspect
+				end
+
+				local uSpan = u1 - u0
+				local vSpan = v1 - v0
+				local uCropSpan = uSpan * (cropW / sliceNativeW)
+				local vCropSpan = vSpan * (cropH / sliceNativeH)
+				local cropU0 = u0 + (uSpan - uCropSpan) / 2
+				local cropV0 = v0 + (vSpan - vCropSpan) / 2
+
+				bg:SetTexCoord(cropU0, cropU0 + uCropSpan, cropV0, cropV0 + vCropSpan)
 				bg:SetAlpha(TalentStageOptionsDB.treeArtAlpha)
 				if not TalentStageOptionsDB.showTreeArt then
 					bg:Hide()
