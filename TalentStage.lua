@@ -29,8 +29,8 @@ TS.IMPORT_ROW_HEIGHT = 30
 -- overlap.png (2026-08-27) that classic never had. TS.TREE_GAP / TS.ROW_GAP
 -- below are the ACTIVE values TalentStage_BuildUI/BuildImportRow/BuildLedger
 -- read -- set at runtime, not fixed constants.
-TS.TREE_GAP_CLASSIC   = 28
-TS.TREE_GAP_PFUI      = 30
+TS.TREE_GAP_CLASSIC   = 14
+TS.TREE_GAP_PFUI      = 14
 TS.ROW_GAP_CLASSIC    = 0
 TS.ROW_GAP_PFUI       = 6
 TS.IMPORT_GAP_CLASSIC = { boxToImport = -8, importToExport = -6 }
