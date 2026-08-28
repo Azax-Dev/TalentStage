@@ -42,11 +42,12 @@ TS.QUEUE_FALLBACK_DELAY = 1.0 -- seconds; LearnTalent has a short server-side
                                -- delay between calls, this is a safety net in
                                -- case TALENT_UPDATE never fires for a call.
 
--- [ Tree background art: dev test, Rogue only ]
+-- [ Tree background art: dev test, all 9 classes wired now (Rogue, Mage,
+-- Shaman, Paladin, Warlock, Warrior, Hunter, Priest, Druid) ]
 -- One shared texture per class, tab N reads a 1/numTabs horizontal slice via
 -- SetTexCoord -- mirrors the rogue-talent-redesign-v3-treebg.html demo's
 -- background-position trick instead of shipping one cropped file per tree.
--- Source art is a Gemini generation (docs/Rogue/rogue3.jpeg), resized to
+-- Source art is a Gemini generation (docs/TreeArt/rogue3.jpeg), resized to
 -- 768x512 (3 panels of 256x512) then padded onto a 1024x512 canvas --
 -- vanilla's texture loader needs power-of-two dimensions, and confirmed
 -- in-game that anything as large as 2048x1024 silently fails to load on
@@ -60,7 +61,11 @@ TS.QUEUE_FALLBACK_DELAY = 1.0 -- seconds; LearnTalent has a short server-side
 -- User-facing toggle/opacity now live in TalentStageOptionsDB (SavedVariables,
 -- per-character), set via the gear button on the main frame -- see
 -- TalentStage_LoadTreeArtOptions / TalentStage_BuildTreeArtSettings.
-TS.TREE_ART_OPTION_DEFAULTS = { showTreeArt = true, treeArtAlpha = 0.35 }
+-- 0.50 matches the tested sweet spot (48-54%) on Rogue, now that every
+-- class's texture is luminance-normalized to Rogue's profile (see
+-- CLAUDE.md tree-art normalization note) so one shared default holds up
+-- across classes instead of only looking right on Rogue.
+TS.TREE_ART_OPTION_DEFAULTS = { showTreeArt = true, treeArtAlpha = 0.50 }
 
 -- UI-theme matching: on by default, reskins TalentStage's own hand-rolled
 -- backdrops/buttons to match whichever supported UI addon is installed,
@@ -73,6 +78,46 @@ TS.TREE_BG_TEXTURES = {
 		[1] = { 0.00, 0.25, 0, 1 }, -- Assassination: left panel
 		[2] = { 0.25, 0.50, 0, 1 }, -- Combat: middle panel
 		[3] = { 0.50, 0.75, 0, 1 }, -- Subtlety: right panel
+	},
+	MAGE = {
+		[1] = { 0.00, 0.25, 0, 1 }, -- Arcane: left panel
+		[2] = { 0.25, 0.50, 0, 1 }, -- Fire: middle panel
+		[3] = { 0.50, 0.75, 0, 1 }, -- Frost: right panel
+	},
+	SHAMAN = {
+		[1] = { 0.00, 0.25, 0, 1 }, -- Elemental: left panel
+		[2] = { 0.25, 0.50, 0, 1 }, -- Enhancement: middle panel
+		[3] = { 0.50, 0.75, 0, 1 }, -- Restoration: right panel
+	},
+	PALADIN = {
+		[1] = { 0.00, 0.25, 0, 1 }, -- Holy: left panel
+		[2] = { 0.25, 0.50, 0, 1 }, -- Protection: middle panel
+		[3] = { 0.50, 0.75, 0, 1 }, -- Retribution: right panel
+	},
+	WARLOCK = {
+		[1] = { 0.00, 0.25, 0, 1 }, -- Affliction: left panel
+		[2] = { 0.25, 0.50, 0, 1 }, -- Demonology: middle panel
+		[3] = { 0.50, 0.75, 0, 1 }, -- Destruction: right panel
+	},
+	WARRIOR = {
+		[1] = { 0.00, 0.25, 0, 1 }, -- Arms: left panel
+		[2] = { 0.25, 0.50, 0, 1 }, -- Fury: middle panel
+		[3] = { 0.50, 0.75, 0, 1 }, -- Protection: right panel
+	},
+	HUNTER = {
+		[1] = { 0.00, 0.25, 0, 1 }, -- Beast Mastery: left panel
+		[2] = { 0.25, 0.50, 0, 1 }, -- Marksmanship: middle panel
+		[3] = { 0.50, 0.75, 0, 1 }, -- Survival: right panel
+	},
+	PRIEST = {
+		[1] = { 0.00, 0.25, 0, 1 }, -- Discipline: left panel
+		[2] = { 0.25, 0.50, 0, 1 }, -- Holy: middle panel
+		[3] = { 0.50, 0.75, 0, 1 }, -- Shadow: right panel
+	},
+	DRUID = {
+		[1] = { 0.00, 0.25, 0, 1 }, -- Balance: left panel
+		[2] = { 0.25, 0.50, 0, 1 }, -- Feral Combat: middle panel
+		[3] = { 0.50, 0.75, 0, 1 }, -- Restoration: right panel
 	},
 }
 
@@ -255,9 +300,6 @@ tinsert(UISpecialFrames, "TalentStageFrame")
 --------------------------------------------------------------------------
 
 function ToggleTalentFrame()
-	if UnitLevel("player") < 10 then
-		return
-	end
 	if TalentStageFrame:IsVisible() then
 		TalentStageFrame:Hide()
 	else
@@ -347,8 +389,14 @@ function TalentStage_BuildUI()
 				-- (set below via SetBackdropBorderColor) draws on the BORDER
 				-- layer, which sits above ARTWORK -- an ARTWORK-layer texture
 				-- at any real opacity painted straight over that border.
+				-- Inset by the backdrop's own edgeSize, not SetAllPoints(panel):
+				-- the border ring occupies the outer edgeSize px of the frame,
+				-- and a full-panel texture paints straight through/under it,
+				-- bleeding past the border on every side.
 				local bg = panel:CreateTexture(nil, "BACKGROUND")
-				bg:SetAllPoints(panel)
+				local edgeInset = TS.PANEL_BACKDROP.edgeSize
+				bg:SetPoint("TOPLEFT", panel, "TOPLEFT", edgeInset, -edgeInset)
+				bg:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -edgeInset, edgeInset)
 				bg:SetTexture("Interface\\AddOns\\TalentStage\\Art\\TreeBG_"..engClass..".tga")
 				bg:SetTexCoord(bgCoords[1], bgCoords[2], bgCoords[3], bgCoords[4])
 				bg:SetAlpha(TalentStageOptionsDB.treeArtAlpha)
