@@ -909,17 +909,9 @@ function TalentStage_DetectUIThemeAddon()
 end
 
 function TalentStage_ApplyUITheme()
-	-- TEMP DEBUG (2026-08-27): prints every time the talent frame is first
-	-- built each session, so a stale/uncached addon copy (or the TS.built
-	-- once-per-session guard skipping a rebuild) is visible in chat instead
-	-- of silently indistinguishable from a real re-skin. Remove once the
-	-- spacing fix is confirmed live in-game.
-	DEFAULT_CHAT_FRAME:AddMessage("TalentStage DEBUG: ApplyUITheme running, matchUITheme="..tostring(TalentStageOptionsDB.matchUITheme).." pfUILoaded="..tostring(IsAddOnLoaded("pfUI")).." TREE_GAP="..tostring(TS.TREE_GAP))
-
 	local theme = TalentStage_DetectUIThemeAddon()
 	if theme == "pfui" then
 		TalentStage_ApplyPfUISkin()
-		DEFAULT_CHAT_FRAME:AddMessage("TalentStage DEBUG: pfUI skin applied.")
 	end
 	-- no match (or option off): leave the hand-rolled skin already applied
 	-- by the Build* functions above untouched.
