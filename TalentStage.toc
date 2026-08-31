@@ -6,4 +6,13 @@
 ## Version: 0.2.0
 ## SavedVariables: TalentStageDumpDB, TalentStageOptionsDB
 
+RankData\DRUID.lua
+RankData\HUNTER.lua
+RankData\MAGE.lua
+RankData\PALADIN.lua
+RankData\PRIEST.lua
+RankData\ROGUE.lua
+RankData\SHAMAN.lua
+RankData\WARLOCK.lua
+RankData\WARRIOR.lua
 TalentStage.xml

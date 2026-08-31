@@ -1682,6 +1682,7 @@ function TalentStage_Refresh()
 	end
 
 	TalentStage_UpdateLedger()
+	TalentStage_RefreshTooltip()
 end
 
 function TalentStage_UpdateLedger()
@@ -2024,13 +2025,357 @@ function TalentStage_TalentButton_OnClick()
 	end
 end
 
-function TalentStage_TalentButton_OnEnter()
-	GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
-	GameTooltip:SetTalent(this.tab, this.talentIndex)
+function TalentStage_Trim(s)
+	return string.gsub(s, "^%s*(.-)%s*$", "%1")
+end
+
+-- True for a line matching one of the engine's own real-rank requirement
+-- messages -- TOOLTIP_TALENT_TIER_POINTS ("Requires %d points in %s
+-- Talents") or TOOLTIP_TALENT_PREREQ/_P1 ("Requires %d point(s) in %s").
+-- Compares against the actual localized globals (via their %d/%s pattern)
+-- rather than a hardcoded "^Requires " English prefix, which would silently
+-- stop matching on any non-enUS client.
+function TalentStage_IsRequirementText(text)
+	local patterns = {
+		TalentStage_GlobalStringToPattern(TOOLTIP_TALENT_TIER_POINTS),
+		TalentStage_GlobalStringToPattern(TOOLTIP_TALENT_PREREQ),
+		TalentStage_GlobalStringToPattern(TOOLTIP_TALENT_PREREQ_P1),
+	}
+	for i = 1, table.getn(patterns) do
+		if string.find(text, patterns[i]) then return true end
+	end
+	return false
+end
+
+-- Turns a GlobalStrings format string (e.g. "Requires %d points in %s
+-- Talents") into a Lua string.find pattern matching any values substituted
+-- into it. The %d/%s here are literal C printf-style tokens inside the
+-- format string, not Lua pattern classes -- marked with a non-magic
+-- placeholder *before* escaping (so the escape pass, which must also
+-- escape any literal "%" the format string contains, can't clobber them),
+-- then swapped for a ".-" wildcard afterward.
+function TalentStage_GlobalStringToPattern(fmt)
+	local marked = string.gsub(fmt, "%%d", "\1")
+	marked = string.gsub(marked, "%%s", "\1")
+	local escaped = string.gsub(marked, "([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1")
+	escaped = string.gsub(escaped, "\1", ".-")
+	return "^"..escaped.."$"
+end
+
+-- Looks up this talent's bundled per-rank description text, generated from
+-- the client's own DBC files by tools/gen_rank_data.py (see CLAUDE.md,
+-- "Rank data source"). Returns nil if RankData isn't loaded, this class/
+-- grid position has no entry, or two of that section's four required
+-- staleness-guard layers fail: name mismatch (layer 1) or maxRank mismatch
+-- (layer 2) against what the live server actually has there right now (a
+-- server-side rebalance since this file was generated). These two alone
+-- catch only ~52% of a realistic revamp's drift per CLAUDE.md's measured
+-- table -- layer 3, the SetTalent-oracle cross-check, is the one that
+-- catches the rest (same name/maxRank, text quietly changed) and lives in
+-- the caller, TalentStage_BuildTalentTooltip, since it needs the scraped
+-- real-tooltip text this function has no access to. Either way, the
+-- failure mode stays "lose the feature," never "show the wrong text."
+function TalentStage_GetRankInfo(tab, idx)
+	if not TalentStage_RankData then return nil end
+	if not TS.playerClassToken then
+		local _, engClass = UnitClass("player")
+		TS.playerClassToken = engClass
+	end
+	local classData = TalentStage_RankData[TS.playerClassToken]
+	if not classData then return nil end
+	local treeData = classData[tab]
+	if not treeData then return nil end
+	local d = TS.panels[tab].info[idx]
+	local tierData = treeData[d.tier]
+	if not tierData then return nil end
+	local rec = tierData[d.column]
+	if not rec or not rec.d or rec.n ~= d.name or rec.r ~= d.maxRank then return nil end
+	return rec
+end
+
+-- Lua-side mirror of gen_rank_data.py's format_number(): whole numbers
+-- print bare, otherwise trimmed to at most 2 decimal places. Must match
+-- the generator's formatting exactly, or a level-scaled value could read
+-- differently from a plain bundled one for no reason a player could see.
+function TalentStage_FormatNumber(x)
+	if x == math.floor(x) then
+		return tostring(math.floor(x))
+	end
+	local s = string.format("%.2f", x)
+	s = string.gsub(s, "0+$", "")
+	s = string.gsub(s, "%.$", "")
+	return s
+end
+
+-- Computes one level-scaled RankData slot's live value using the player's
+-- real, current character level -- see CLAUDE.md's 2026-08-31 level-
+-- scaling follow-up for the formula's derivation and verification
+-- (confirmed against vmangos/core's SpellCaster::CalculateSpellEffectValue
+-- and against Serrated Blades' known real values at level 60).
+-- `s` is one entry of a RankData scale table: { b=, p=, bl=, ml=, sl=,
+-- op=, n= }. b/p are always present; bl/ml/sl default to 0 (no clamp,
+-- matching the C++ source's own "0 means unset" convention); op/n are
+-- present only for a division-scaled token ("$/n;<id>s<i>" style).
+function TalentStage_ComputeLevelScaled(s)
+	local level = UnitLevel("player")
+	local maxLevel = s.ml or 0
+	local baseLevel = s.bl or 0
+	local spellLevel = s.sl or 0
+	if maxLevel > 0 and level > maxLevel then level = maxLevel end
+	if level < baseLevel then level = baseLevel end
+	level = level - spellLevel
+	-- The real value is a C++ int32 -- the float per-level term truncates
+	-- toward zero on assignment, not rounds or floors (confirmed: Serrated
+	-- Blades' raw float at level 60 is -100.1999..., which must truncate
+	-- to -100 to match its real "100" armor-ignore value).
+	local value = s.b + level * s.p
+	value = value >= 0 and math.floor(value) or math.ceil(value)
+	if s.op == "/" then
+		value = value / s.n
+	end
+	return TalentStage_FormatNumber(math.abs(value))
+end
+
+-- Turns one RankData d[rank] slot into final display text. Plain strings
+-- (the common case) pass through unchanged; a level-scaled entry is a
+-- table { t = template, s = { scale params... } } whose template contains
+-- one \2 byte per entry in `s` -- each gets replaced with that slot's
+-- live-computed value, in order.
+function TalentStage_RenderRankText(entry)
+	if type(entry) == "string" then
+		return entry
+	end
+	local i = 0
+	local function repl()
+		i = i + 1
+		return TalentStage_ComputeLevelScaled(entry.s[i])
+	end
+	return string.gsub(entry.t, "\2", repl)
+end
+
+-- Builds the whole tooltip ourselves: name + a staged-aware "Rank N/M"
+-- header (no annotation -- real 0 + staged 2 just reads "Rank 2/5"), the
+-- description/next-rank text scraped verbatim off the engine's own real
+-- SetTalent output (still describing the *real* rank -- known, accepted
+-- gap, see CLAUDE.md), and requirement lines rebuilt from
+-- TalentStage_IsTierUnlocked / TalentStage_PrereqsMet instead of the
+-- engine's real-rank-only flags.
+--
+-- Scrapes off the live GameTooltip itself (populated via the real
+-- SetTalent call, then read back and cleared before anything is shown to
+-- the player) rather than a separately-created GameTooltip-type frame: a
+-- freshly CreateFrame'd tooltip with no real anchor/owner never actually
+-- laid out SetTalent's extra description/next-rank/requirement lines --
+-- NumLines() came back as just name+rank -- so re-use the tooltip that is
+-- already known to populate correctly.
+function TalentStage_BuildTalentTooltip(tab, idx)
+	local panel = TS.panels[tab]
+	local name, _, tier, _, rank, maxRank = GetTalentInfo(tab, idx)
+	local effRank = TalentStage_EffectiveRank(tab, idx, rank)
+	local staged = TalentStage_GetStaged(tab, idx)
+	local rankInfo = TalentStage_GetRankInfo(tab, idx)
+
+	GameTooltip:ClearLines()
+	GameTooltip:SetTalent(tab, idx)
+	local numLines = GameTooltip:NumLines()
+
+	local scraped = {}
+	for i = 1, numLines do
+		local fs = getglobal("GameTooltipTextLeft"..i)
+		if fs then
+			local r, g, b = fs:GetTextColor()
+			table.insert(scraped, { text = fs:GetText(), r = r, g = g, b = b })
+		end
+	end
+
+	-- Colors sampled from the real name/rank lines rather than guessed, so
+	-- the Phase 0 rebuild is pixel-identical to the engine's own tooltip
+	-- when nothing is staged (Test D).
+	local nameR, nameG, nameB = 1, 1, 1
+	if scraped[1] then nameR, nameG, nameB = scraped[1].r, scraped[1].g, scraped[1].b end
+	local rankR, rankG, rankB = 1, 0.82, 0
+	if scraped[2] then rankR, rankG, rankB = scraped[2].r, scraped[2].g, scraped[2].b end
+
+	-- Sampled (not guessed) from whatever real copy of these lines the
+	-- engine showed, so a rebuilt line is pixel-identical to the real
+	-- tooltip when the real and effective states agree (Test D). Falls back
+	-- to vanilla's actual tooltip colors if the real state never shows one.
+	local learnR, learnG, learnB = 0.1, 1, 0.1
+	local reqR, reqG, reqB = 1, 0.1, 0.1
+	local bodyR, bodyG, bodyB = 1, 1, 1
+	local nextHeaderR, nextHeaderG, nextHeaderB = 0.6, 0.6, 1
+
+	-- Whether the real (unstaged) tooltip actually included the hint --
+	-- staged=0 rebuilds off this directly rather than our own usable-point
+	-- math, so Test D matches today exactly even if that math is off by one
+	-- edge case the engine doesn't share.
+	local learnFoundReal = false
+
+	-- Pass 1: classify every scraped line beyond name/rank WITHOUT emitting
+	-- anything yet. Nothing can be written to the tooltip until the
+	-- SetTalent-oracle check below decides whether rankInfo is trustworthy
+	-- (CLAUDE.md's staleness-guard layer 3): a real server-side rebalance
+	-- can leave a talent's name and maxRank unchanged while its text
+	-- quietly drifts, which layers 1-2 (the name/maxRank check already
+	-- done inside TalentStage_GetRankInfo) cannot catch on their own --
+	-- CLAUDE.md's own measured drift table found those two layers alone
+	-- miss roughly half of a realistic revamp's changes.
+	local bodyLines, nextRankLines = {}, {}
+	local sawNextRankHeader = false
+	local inNextRank = false
+	for i = 3, numLines do
+		local line = scraped[i]
+		local text = line and line.text
+		-- Blank spacer lines (SetTalent commonly pads with AddLine("")
+		-- between the description and "Next rank:") must not become part
+		-- of either body -- besides being pointless to redraw, one would
+		-- otherwise slip into bodyLines and corrupt the SetTalent-oracle
+		-- exact-text comparison below with a spurious blank entry, making
+		-- rankInfo look untrustworthy for every single talent that has one.
+		if text and text ~= "" then
+			if text == TOOLTIP_TALENT_LEARN then
+				learnFoundReal = true
+				learnR, learnG, learnB = line.r, line.g, line.b
+			elseif TalentStage_IsRequirementText(text) then
+				reqR, reqG, reqB = line.r, line.g, line.b
+			elseif text == TOOLTIP_TALENT_NEXT_RANK then
+				sawNextRankHeader = true
+				inNextRank = true
+				nextHeaderR, nextHeaderG, nextHeaderB = line.r, line.g, line.b
+			elseif inNextRank then
+				table.insert(nextRankLines, line)
+			else
+				bodyR, bodyG, bodyB = line.r, line.g, line.b
+				table.insert(bodyLines, line)
+			end
+		end
+	end
+
+	local scrapedBodyText = {}
+	for i = 1, table.getn(bodyLines) do
+		table.insert(scrapedBodyText, bodyLines[i].text)
+	end
+	scrapedBodyText = table.concat(scrapedBodyText, "\n")
+
+	-- The oracle: rankInfo is only trusted if OUR rendering for the rank
+	-- the player actually, really holds matches what the engine's own
+	-- SetTalent just scraped for that same rank, character for character.
+	-- Layers 1-2 already ran inside TalentStage_GetRankInfo; this is
+	-- layer 3, and it is the one that catches "name and maxRank both
+	-- survived a rebalance, but the numbers inside the text didn't."
+	local trustRankInfo = false
+	if rankInfo then
+		local oracleRank = rank > 0 and rank or 1
+		-- rankInfo.d[rank] can be a plain string OR a level-scaled
+		-- template+params table (see TalentStage_RenderRankText) -- always
+		-- render before comparing. Since this uses the player's real,
+		-- current level (the only level a level-scaled slot ever renders
+		-- with), it reproduces exactly what the engine's own scrape shows
+		-- for the rank the player actually, really holds.
+		local oracleText = TalentStage_RenderRankText(rankInfo.d[oracleRank])
+		-- Trimmed on both sides -- defends against any leading/trailing
+		-- whitespace difference between the two independently-produced
+		-- strings without weakening the check: a real content difference
+		-- anywhere inside either string still fails the comparison.
+		trustRankInfo = (oracleText ~= nil
+			and TalentStage_Trim(oracleText) == TalentStage_Trim(scrapedBodyText))
+	end
+
+	-- Pass 2: now that trust is decided, actually build the tooltip.
+	GameTooltip:ClearLines()
+	GameTooltip:AddLine(name, nameR, nameG, nameB)
+	GameTooltip:AddLine(string.format(TOOLTIP_TALENT_RANK, effRank, maxRank), rankR, rankG, rankB)
+
+	if trustRankInfo then
+		-- Fully our own: staged-aware and byte-correct for any rank,
+		-- including one the player has never actually held. A level-scaled
+		-- slot renders using the player's real, current level regardless
+		-- of which talent rank is being shown -- level-scaling depends on
+		-- character level, not talent rank, so this is correct even for a
+		-- staged rank the player hasn't actually reached yet.
+		local curRank = effRank > 0 and effRank or 1
+		GameTooltip:AddLine(TalentStage_RenderRankText(rankInfo.d[curRank]), bodyR, bodyG, bodyB, 1)
+		if effRank > 0 and effRank < maxRank then
+			GameTooltip:AddLine(TOOLTIP_TALENT_NEXT_RANK, nextHeaderR, nextHeaderG, nextHeaderB)
+			GameTooltip:AddLine(TalentStage_RenderRankText(rankInfo.d[effRank + 1]), bodyR, bodyG, bodyB, 1)
+		end
+	else
+		-- Untouched Phase 0 fallback: scraped description always passes
+		-- through (still describing the real rank -- the known, accepted
+		-- gap this whole rankInfo path exists to close when it can), and
+		-- the scraped next-rank line is suppressed only while staged (it
+		-- would otherwise describe a rank behind effRank).
+		for i = 1, table.getn(bodyLines) do
+			local l = bodyLines[i]
+			GameTooltip:AddLine(l.text, l.r, l.g, l.b, 1)
+		end
+		if sawNextRankHeader and staged == 0 then
+			GameTooltip:AddLine(TOOLTIP_TALENT_NEXT_RANK, nextHeaderR, nextHeaderG, nextHeaderB)
+			for i = 1, table.getn(nextRankLines) do
+				local l = nextRankLines[i]
+				GameTooltip:AddLine(l.text, l.r, l.g, l.b, 1)
+			end
+		end
+	end
+
+	local tierUnlocked = TalentStage_IsTierUnlocked(tab, tier)
+	local prereqsMet = TalentStage_PrereqsMet(tab, idx)
+
+	if not tierUnlocked then
+		local tabName = GetTalentTabInfo(tab)
+		GameTooltip:AddLine(string.format(TOOLTIP_TALENT_TIER_POINTS, (tier - 1) * 5, tabName), reqR, reqG, reqB)
+	elseif not prereqsMet then
+		local args = { GetTalentPrereqs(tab, idx) }
+		local n = table.getn(args)
+		for i = 1, n, 3 do
+			local ptier, pcol = args[i], args[i + 1]
+			local prow = panel.nodes[ptier]
+			local pidx = prow and prow[pcol]
+			if pidx then
+				local pd = panel.info[pidx]
+				local pEffRank = TalentStage_EffectiveRank(tab, pidx, pd.rank)
+				if pEffRank < pd.maxRank then
+					if pd.maxRank == 1 then
+						GameTooltip:AddLine(string.format(TOOLTIP_TALENT_PREREQ, pd.maxRank, pd.name), reqR, reqG, reqB)
+					else
+						GameTooltip:AddLine(string.format(TOOLTIP_TALENT_PREREQ_P1, pd.maxRank, pd.name), reqR, reqG, reqB)
+					end
+				end
+			end
+		end
+	elseif effRank < maxRank then
+		if staged > 0 then
+			local pointsLeft = TalentStage_GetAvailablePoints() - TalentStage_GetTotalStaged()
+			if pointsLeft > 0 then
+				GameTooltip:AddLine(TOOLTIP_TALENT_LEARN, learnR, learnG, learnB)
+			end
+		elseif learnFoundReal then
+			GameTooltip:AddLine(TOOLTIP_TALENT_LEARN, learnR, learnG, learnB)
+		end
+	end
+
 	GameTooltip:Show()
 end
 
+-- Rebuilds the tooltip if the cursor is still sitting on a talent button
+-- whose staged/effective state just changed -- OnEnter does not re-fire
+-- while the cursor stays put, so without this a click or a confirm-queue
+-- point landing under the cursor would reproduce a smaller copy of the
+-- same staged-blindness bug this tooltip rework fixes.
+function TalentStage_RefreshTooltip()
+	if TS.hoverBtn and TS.hoverBtn:IsVisible() then
+		TalentStage_BuildTalentTooltip(TS.hoverTab, TS.hoverIdx)
+	end
+end
+
+function TalentStage_TalentButton_OnEnter()
+	TS.hoverTab, TS.hoverIdx, TS.hoverBtn = this.tab, this.talentIndex, this
+	GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+	TalentStage_BuildTalentTooltip(this.tab, this.talentIndex)
+end
+
 function TalentStage_TalentButton_OnLeave()
+	TS.hoverTab, TS.hoverIdx, TS.hoverBtn = nil, nil, nil
 	GameTooltip:Hide()
 end
 

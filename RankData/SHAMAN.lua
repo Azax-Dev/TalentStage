@@ -1,0 +1,125 @@
+-- RankData/SHAMAN.lua -- GENERATED, do not hand-edit.
+-- Source: this client's own Talent.dbc/Spell.dbc/SpellDuration.dbc
+-- (see CLAUDE.md, "Rank data source" section -- NOT the octowow.st scrape).
+-- Regenerate with: python3 tools/gen_rank_data.py
+-- Generated: 2026-08-31
+--
+-- Keyed [tree][tier][column] (tree = the `tab` GetTalentInfo takes, 1-3,
+-- ordered via TalentTab.dbc's OrderIndex field -- NOT raw tab id order,
+-- which gets 7 of 9 classes wrong).
+--   n = name (validated against live GetTalentInfo before use)
+--   r = max rank
+--   d = { [rank] = ... }, 1-indexed. Each entry is EITHER a plain
+--       rendered string, OR (when the real value depends on the
+--       player's live character level -- e.g. Serrated Blades'
+--       armor-ignore, Ice Barrier's absorb -- see CLAUDE.md's
+--       2026-08-31 level-scaling follow-up) a table
+--       { t = template, s = { {b=,p=,bl=,ml=,sl=,op=,n=}, ... } }
+--       where `t` contains one \2 byte per entry in `s`;
+--       TalentStage_RenderRankText computes each slot live via
+--       TalentStage_ComputeLevelScaled(UnitLevel("player"), ...).
+--       The whole `d` entry is OMITTED (nil) whenever any rank's
+--       text used a token this generator doesn't confidently
+--       resolve at all -- TalentStage falls back to its normal
+--       live-scrape tooltip for that talent.
+
+TalentStage_RankData = TalentStage_RankData or {}
+TalentStage_RankData["SHAMAN"] = {
+	[1] = {
+		[1] = {
+			[2] = { n = "Convection", r = 5, d = { "Reduces the mana cost of your offensive Fire, Frost, and Nature spells by 2%.", "Reduces the mana cost of your offensive Fire, Frost, and Nature spells by 4%.", "Reduces the mana cost of your offensive Fire, Frost, and Nature spells by 6%.", "Reduces the mana cost of your offensive Fire, Frost, and Nature spells by 8%.", "Reduces the mana cost of your offensive Fire, Frost, and Nature spells by 10%." } },
+			[3] = { n = "Concussion", r = 5, d = { "Increases the damage done by your Fire, Frost, and Nature spells by 1%.", "Increases the damage done by your Fire, Frost, and Nature spells by 2%.", "Increases the damage done by your Fire, Frost, and Nature spells by 3%.", "Increases the damage done by your Fire, Frost, and Nature spells by 4%.", "Increases the damage done by your Fire, Frost, and Nature spells by 5%." } },
+		},
+		[2] = {
+			[1] = { n = "Earth's Grasp", r = 2, d = { "Increases the health of your Stoneclaw Totem by 25% and the radius of your Earthbind Totem by 10%.", "Increases the health of your Stoneclaw Totem by 50% and the radius of your Earthbind Totem by 20%." } },
+			[2] = { n = "Elemental Warding", r = 3, d = { "Reduces damage taken from Fire, Frost and Nature effects by 4%.", "Reduces damage taken from Fire, Frost and Nature effects by 7%.", "Reduces damage taken from Fire, Frost and Nature effects by 10%." } },
+			[3] = { n = "Elemental Devastation", r = 3, d = { "Increases your chance to hit with spells and melee attacks by 1% and your melee critical strikes increase your chance to hit with spells by additional 3% for 10 sec.", "Increases your chance to hit with spells and melee attacks by 2% and your melee critical strikes increase your chance to hit with spells by additional 6% for 10 sec.", "Increases your chance to hit with spells and melee attacks by 3% and your melee critical strikes increase your chance to hit with spells by additional 9% for 10 sec." } },
+		},
+		[3] = {
+			[1] = { n = "Elemental Focus", r = 1, d = { "After landing a critical strike with a Fire, Frost, or Nature damage spell or melee attack, you enter a Clearcasting state.  The Clearcasting state reduces the mana cost of your next two damage spells or abilities by 60%." } },
+			[2] = { n = "Reverberation", r = 3, d = { "Reduces the cooldown of your Shock spells by 0.33 sec.", "Reduces the cooldown of your Shock spells by 0.67 sec.", "Reduces the cooldown of your Shock spells by 1 sec." } },
+			[3] = { n = "Call of Thunder", r = 5, d = { "Increases the critical strike chance of your Lightning Bolt and Chain Lightning spells by an additional 1%.", "Increases the critical strike chance of your Lightning Bolt and Chain Lightning spells by an additional 2%.", "Increases the critical strike chance of your Lightning Bolt and Chain Lightning spells by an additional 3%.", "Increases the critical strike chance of your Lightning Bolt and Chain Lightning spells by an additional 4%.", "Increases the critical strike chance of your Lightning Bolt and Chain Lightning spells by an additional 6%." } },
+			[4] = { n = "Improved Molten Blast", r = 2, d = { "Refreshing Flame Shock with Molten Blast deals damage equal to 30% of the refreshed duration.", "Refreshing Flame Shock with Molten Blast deals damage equal to 60% of the refreshed duration." } },
+		},
+		[4] = {
+			[1] = { n = "Improved Fire Totems", r = 2, d = { "Reduces the delay before your Fire Nova Totem activates by 1 sec, decreases the threat generated by your Magma Totem by 25%, and increases your Searing Totem's attack speed by 10% and its attack range by 5 yards.", "Reduces the delay before your Fire Nova Totem activates by 2 sec, decreases the threat generated by your Magma Totem by 50%, and increases your Searing Totem's attack speed by 20% and its attack range by 10 yards." } },
+			[2] = { n = "Call of Earth", r = 2, d = { "Increases the maximum charges of your Earth Shield by 2. While Earth Shield is active, increases your chance to avoid interruption caused by damage while casting damaging spells by an additional 25%, and causes your direct damaging spells to replenish 1 charge.", "Increases the maximum charges of your Earth Shield by 4. While Earth Shield is active, increases your chance to avoid interruption caused by damage while casting damaging spells by an additional 50%, and causes your direct damaging spells to replenish 1 charge." } },
+			[4] = { n = "Call of Flame", r = 3, d = { "Increases the damage done by your Fire Totems and Fire spells by 5%, and the range of your Flame Shock by 3 yards.", "Increases the damage done by your Fire Totems and Fire spells by 10%, and the range of your Flame Shock by 6 yards.", "Increases the damage done by your Fire Totems and Fire spells by 15%, and the range of your Flame Shock by 10 yards." } },
+		},
+		[5] = {
+			[1] = { n = "Storm Reach", r = 2, d = { "Increases the range of your Lightning Bolt and Chain Lightning spells by 3 yards.", "Increases the range of your Lightning Bolt and Chain Lightning spells by 6 yards." } },
+			[2] = { n = "Elemental Mastery", r = 1, d = { "Increases your Fire, Frost, and Nature damage by 15% and reduces the mana cost of your offensive spells by 20% for 10 sec." } },
+			[4] = { n = "Elemental Fury", r = 2, d = { "Increases damage done by your Frost, Fire, and Nature spells by 5%, and increases the critical strike damage bonus of Searing, Magma, and Fire Nova Totems, as well as your Fire, Frost, and Nature spells, by 50%.", "Increases damage done by your Frost, Fire, and Nature spells by 10%, and increases the critical strike damage bonus of Searing, Magma, and Fire Nova Totems, as well as your Fire, Frost, and Nature spells, by 100%." } },
+		},
+		[6] = {
+			[3] = { n = "Lightning Mastery", r = 5, d = { "Reduces the cast time of your Lightning Bolt and Chain Lightning spells by 0.2 sec.", "Reduces the cast time of your Lightning Bolt and Chain Lightning spells by 0.4 sec.", "Reduces the cast time of your Lightning Bolt and Chain Lightning spells by 0.6 sec.", "Reduces the cast time of your Lightning Bolt and Chain Lightning spells by 0.8 sec.", "Reduces the cast time of your Lightning Bolt and Chain Lightning spells by 1 sec." } },
+		},
+		[7] = {
+			[2] = { n = "Earthquake", r = 1, d = { "Breaks the earth beneath the target, dealing 291 Nature damage to the target and an additional 35% of that damage as Nature damage to other enemies within 10 yards. Creates a patch of broken earth that slows enemies inside it by 15%. After 4 sec, the broken earth erupts in an aftershock, dealing Nature damage equal to 30% of the initial damage to all enemies within the area." } },
+		},
+	},
+	[2] = {
+		[1] = {
+			[2] = { n = "Ancestral Knowledge", r = 5, d = { "Increases the total value of all your stats by 1%.", "Increases the total value of all your stats by 2%.", "Increases the total value of all your stats by 3%.", "Increases the total value of all your stats by 4%.", "Increases the total value of all your stats by 5%." } },
+			[3] = { n = "Shield Specialization", r = 5, d = { "Increases your chance to block attacks with a shield by 1% and increases the amount blocked by 6%.", "Increases your chance to block attacks with a shield by 2% and increases the amount blocked by 12%.", "Increases your chance to block attacks with a shield by 3% and increases the amount blocked by 18%.", "Increases your chance to block attacks with a shield by 4% and increases the amount blocked by 24%.", "Increases your chance to block attacks with a shield by 5% and increases the amount blocked by 30%." } },
+		},
+		[2] = {
+			[1] = { n = "Totemic Alignment", r = 2, d = { "45% of the threat generated by your totems is transferred to you.", "90% of the threat generated by your totems is transferred to you." } },
+			[2] = { n = "Thundering Strikes", r = 5, d = { "Improves your chance to get a critical strike with your weapon attacks by 1%.", "Improves your chance to get a critical strike with your weapon attacks by 2%.", "Improves your chance to get a critical strike with your weapon attacks by 3%.", "Improves your chance to get a critical strike with your weapon attacks by 4%.", "Improves your chance to get a critical strike with your weapon attacks by 5%." } },
+			[3] = { n = "Stable Shields", r = 3, d = { "Increases the number of charges of your shield spells by 2, but increases the cooldown between activations by 1 sec.", "Increases the number of charges of your shield spells by 4, but increases the cooldown between activations by 1 sec.", "Increases the number of charges of your shield spells by 6, but increases the cooldown between activations by 1 sec." } },
+			[4] = { n = "Improved Ghost Wolf", r = 2, d = { "Reduces the cast time of your Ghost Wolf spell by 1 sec.", "Reduces the cast time of your Ghost Wolf spell by 2 sec." } },
+		},
+		[3] = {
+			[1] = { n = "Calming Winds", r = 3, d = { "Reduces threat generated by your physical attacks, weapon imbue effects, and your Lightning Strike and Stormstrike abilities by 8%. This effect does not apply while Rockbiter Weapon is active.", "Reduces threat generated by your physical attacks, weapon imbue effects, and your Lightning Strike and Stormstrike abilities by 16%. This effect does not apply while Rockbiter Weapon is active.", "Reduces threat generated by your physical attacks, weapon imbue effects, and your Lightning Strike and Stormstrike abilities by 25%. This effect does not apply while Rockbiter Weapon is active." } },
+			[3] = { n = "Lightning Strike", r = 1, d = { "Instantly strikes your target, causing 20% weapon damage and an additional 10% as Nature damage.  This strike also triggers an empowered version of your active shield, consuming 1 charge." } },
+			[4] = { n = "Ancestral Guardian", r = 3, d = { "Increases your armor value from items by 5% and chance to dodge by an additional 2%.", "Increases your armor value from items by 10% and chance to dodge by an additional 4%.", "Increases your armor value from items by 15% and chance to dodge by an additional 6%." } },
+		},
+		[4] = {
+			[2] = { n = "Flurry", r = 5, d = { "Increases your attack speed by 8% for your next 3 swings after dealing a critical strike.", "Increases your attack speed by 11% for your next 3 swings after dealing a critical strike.", "Increases your attack speed by 14% for your next 3 swings after dealing a critical strike.", "Increases your attack speed by 17% for your next 3 swings after dealing a critical strike.", "Increases your attack speed by 20% for your next 3 swings after dealing a critical strike." } },
+			[3] = { n = "Spirit Armor", r = 2, d = { "Increases the armor gained from shields by 15% and threat generated by 5% while wearing a shield.", "Increases the armor gained from shields by 30% and threat generated by 10% while wearing a shield." } },
+		},
+		[5] = {
+			[1] = { n = "Enhancing Totems", r = 2, d = { "Increases the effect of your Strength of Earth and Grace of Air Totems by 12% and reduces the cooldown of your Grounding Totem by 1 sec. Stoneskin Totem's damage reduction is increased by 15%, and in addition, it increases block amount by 15%.", "Increases the effect of your Strength of Earth and Grace of Air Totems by 25% and reduces the cooldown of your Grounding Totem by 2 sec. Stoneskin Totem's damage reduction is increased by 30%, and in addition, it increases block amount by 30%." } },
+			[2] = { n = "Elemental Weapons", r = 3, d = { "Imbuing your weapon grants a special benefit based on the imbue:\n- Flametongue: Hitting enemies with your attacks increases damage done by Fire Totems and Fire spells by 10% for 5 sec.\n- Frostbrand: Increases the chance to trigger the effect by 8% and causes it to critically hit if the target is afflicted with Frost Shock.\n- Windfury: Gaining extra attacks increases attack speed by 1% for 5 sec. Stacks up to 2 times.\n- Rockbiter: Physical damage builds up an earthen bulwark equal to 20% of damage dealt, tripled while wearing a shield. The bulwark absorbs 5% of incoming damage for 8 sec or until it mitigates enough damage. Its durability cannot exceed 20% of maximum health. ", "Imbuing your weapon grants a special benefit based on the imbue:\n- Flametongue: Hitting enemies with your attacks increases damage done by Fire Totems and Fire spells by 20% for 5 sec.\n- Frostbrand: Increases the chance to trigger the effect by 16% and causes it to critically hit if the target is afflicted with Frost Shock.\n- Windfury: Gaining extra attacks increases attack speed by 1% for 5 sec. Stacks up to 2 times.\n- Rockbiter: Physical damage builds up an earthen bulwark equal to 20% of damage dealt, tripled while wearing a shield. The bulwark absorbs 10% of incoming damage for 8 sec or until it mitigates enough damage. Its durability cannot exceed 20% of maximum health. ", "Imbuing your weapon grants a special benefit based on the imbue:\n- Flametongue: Hitting enemies with your attacks increases damage done by Fire Totems and Fire spells by 30% for 5 sec.\n- Frostbrand: Increases the chance to trigger the effect by 25% and causes it to critically hit if the target is afflicted with Frost Shock.\n- Windfury: Gaining extra attacks increases attack speed by 1% for 5 sec. Stacks up to 2 times.\n- Rockbiter: Physical damage builds up an earthen bulwark equal to 20% of damage dealt, tripled while wearing a shield. The bulwark absorbs 15% of incoming damage for 8 sec or until it mitigates enough damage. Its durability cannot exceed 20% of maximum health. " } },
+			[3] = { n = "Stormstrike", r = 1, d = { "Gives you an extra attack for 100% weapon damage and increases the next 2 sources of Nature damage you deal by 25%.  Lasts 12 sec." } },
+		},
+		[6] = {
+			[3] = { n = "Element's Grace", r = 5, d = { "Increases the damage you deal with all weapons, Stormstrike and Lightning Strike abilities by 2%. Increases the critical strike chance of your instant cast spells by 2%.", "Increases the damage you deal with all weapons, Stormstrike and Lightning Strike abilities by 4%. Increases the critical strike chance of your instant cast spells by 4%.", "Increases the damage you deal with all weapons, Stormstrike and Lightning Strike abilities by 6%. Increases the critical strike chance of your instant cast spells by 6%.", "Increases the damage you deal with all weapons, Stormstrike and Lightning Strike abilities by 8%. Increases the critical strike chance of your instant cast spells by 8%.", "Increases the damage you deal with all weapons, Stormstrike and Lightning Strike abilities by 10%. Increases the critical strike chance of your instant cast spells by 10%." } },
+		},
+		[7] = {
+			[2] = { n = "Bloodlust", r = 1, d = { "Fly into a frenzy, increasing your attack speed by 20% and spell casting speed by 20% for 30 sec.  While under this effect, your melee critical strikes increase the attack and spell casting speed of all party members within 30 yards by 8% for 6 sec." } },
+		},
+	},
+	[3] = {
+		[1] = {
+			[2] = { n = "Improved Healing Wave", r = 5, d = { "Reduces the casting time of your Healing Wave spell by 0.15 sec.", "Reduces the casting time of your Healing Wave spell by 0.3 sec.", "Reduces the casting time of your Healing Wave spell by 0.45 sec.", "Reduces the casting time of your Healing Wave spell by 0.6 sec.", "Reduces the casting time of your Healing Wave spell by 0.75 sec." } },
+			[3] = { n = "Tidal Focus", r = 5, d = { "Reduces the Mana cost of your healing spells by 1% and your totems by 5%.", "Reduces the Mana cost of your healing spells by 2% and your totems by 10%.", "Reduces the Mana cost of your healing spells by 3% and your totems by 15%.", "Reduces the Mana cost of your healing spells by 4% and your totems by 20%.", "Reduces the Mana cost of your healing spells by 5% and your totems by 25%." } },
+		},
+		[2] = {
+			[1] = { n = "Improved Reincarnation", r = 2, d = { "Reduces the cooldown of your Reincarnation spell by 10 min and increases the amount of health and mana you reincarnate with by an additional 10%.", "Reduces the cooldown of your Reincarnation spell by 20 min and increases the amount of health and mana you reincarnate with by an additional 20%." } },
+			[2] = { n = "Ancestral Healing", r = 3, d = { "Increases your target's armor value by 8% for 15 sec after getting a critical effect from one of your healing spells.", "Increases your target's armor value by 16% for 15 sec after getting a critical effect from one of your healing spells.", "Increases your target's armor value by 25% for 15 sec after getting a critical effect from one of your healing spells." } },
+			[3] = { n = "Tidal Mastery", r = 5, d = { "Increases the critical effect chance of your healing and lightning spells by 1%.", "Increases the critical effect chance of your healing and lightning spells by 2%.", "Increases the critical effect chance of your healing and lightning spells by 3%.", "Increases the critical effect chance of your healing and lightning spells by 4%.", "Increases the critical effect chance of your healing and lightning spells by 5%." } },
+		},
+		[3] = {
+			[1] = { n = "Healing Way", r = 3, d = { "Your Healing Wave and Lesser Healing Wave spells each have a 33% chance, and your Chain Heal spell has a 11% chance to increase the healing of your next Healing Wave or Chain Heal on that target by 6% for 15 sec. This effect stacks up to 3 times.", "Your Healing Wave and Lesser Healing Wave spells each have a 66% chance, and your Chain Heal spell has a 22% chance to increase the healing of your next Healing Wave or Chain Heal on that target by 6% for 15 sec. This effect stacks up to 3 times.", "Your Healing Wave and Lesser Healing Wave spells each have a 100% chance, and your Chain Heal spell has a 33% chance to increase the healing of your next Healing Wave or Chain Heal on that target by 6% for 15 sec. This effect stacks up to 3 times." } },
+			[2] = { n = "Healing Focus", r = 2, d = { "Gives you a 35% chance to avoid interruption caused by damage while casting any healing spell.", "Gives you a 70% chance to avoid interruption caused by damage while casting any healing spell." } },
+			[3] = { n = "Totemic Mastery", r = 1, d = { "Increases the duration of your helpful totems by 20% and the amount of mana refunded by Totemic Recall by an additional 15%." } },
+			[4] = { n = "Nature's Grace", r = 3, d = { "Reduces the threat generated by your Nature spells by 5%.", "Reduces the threat generated by your Nature spells by 10%.", "Reduces the threat generated by your Nature spells by 15%." } },
+		},
+		[4] = {
+			[2] = { n = "Restorative Totems", r = 5, d = { "Reduces mana cost of your Mana Spring Totem by 10% and increases the effect of your Healing Stream Totem by 5%.", "Reduces mana cost of your Mana Spring Totem by 20% and increases the effect of your Healing Stream Totem by 10%.", "Reduces mana cost of your Mana Spring Totem by 30% and increases the effect of your Healing Stream Totem by 15%.", "Reduces mana cost of your Mana Spring Totem by 40% and increases the effect of your Healing Stream Totem by 20%.", "Reduces mana cost of your Mana Spring Totem by 50% and increases the effect of your Healing Stream Totem by 25%." } },
+			[3] = { n = "Improved Water Shield", r = 3, d = { "While your Water Shield is active, you restore 3 Mana every 5 sec, and your total mana regeneration is increased by 1% for each active Water Shield globe.", "While your Water Shield is active, you restore 6 Mana every 5 sec, and your total mana regeneration is increased by 1.5% for each active Water Shield globe.", "While your Water Shield is active, you restore 9 Mana every 5 sec, and your total mana regeneration is increased by 2% for each active Water Shield globe." } },
+		},
+		[5] = {
+			[1] = { n = "Tidal Surge", r = 2, d = { "After healing a target affected by your Healing Way effect, you have a 15% chance to regain mana equal to 15% of the base cost of the spell.", "After healing a target affected by your Healing Way effect, you have a 30% chance to regain mana equal to 15% of the base cost of the spell." } },
+			[3] = { n = "Ancestral Swiftness", r = 1, d = { "When activated, your next Nature spell with a casting time less than 10 sec becomes an instant cast spell. Affected damaging spells have 25% reduced effectiveness." } },
+			[4] = { n = "Undertow", r = 2, d = { "Your Healing Wave and Lesser Healing Wave spells have a 25% chance to restore a charge of your active Water Shield.  When your Water Shield is at maximum charges, this effect consumes a charge instead.", "Your Healing Wave and Lesser Healing Wave spells have a 50% chance to restore a charge of your active Water Shield.  When your Water Shield is at maximum charges, this effect consumes a charge instead." } },
+		},
+		[6] = {
+			[2] = { n = "Improved Chain Heal", r = 5, d = { "Reduces the cast time of your Chain Heal spell by 0.2 sec.", "Reduces the cast time of your Chain Heal spell by 0.4 sec.", "Reduces the cast time of your Chain Heal spell by 0.6 sec.", "Reduces the cast time of your Chain Heal spell by 0.8 sec.", "Reduces the cast time of your Chain Heal spell by 1 sec." } },
+		},
+		[7] = {
+			[2] = { n = "Spirit Link", r = 1, d = { "Links the spirit of an ally to that of other group members within 35 yards. When the target takes damage, 30% is distributed among nearby allies. Lasts 20 sec." } },
+		},
+	},
+}
