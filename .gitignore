@@ -8,3 +8,7 @@ CLAUDE.md
 
 # Dev-only data dump tooling, not part of the shipped addon
 /tools/
+
+# docs/ is a local dev workspace (research notes, art experiments, talent
+# dumps, release zips) -- not part of the shipped addon, never pushed
+/docs/
