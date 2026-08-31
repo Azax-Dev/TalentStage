@@ -205,6 +205,10 @@ TS.queueDone = 0        -- points settled so far in the current confirm run
 TS.SANDBOX_LEVEL_CAPS = { 10, 20, 30, 40, 50, 60 }
 
 TS.sandboxMode = false
+TS.devTreeArtOverride = nil -- dev-only, session-only (never saved): nil = auto
+                            -- (SetUnitBlip capability check), "small" or "full"
+                            -- forces that tier regardless of client capability --
+                            -- see "/ts treeart" and TalentStage_BuildUI's tree-art block
 TS.sandboxLevelCap = nil -- nil = unlimited (999) sandbox points; otherwise one of
                         -- TS.SANDBOX_LEVEL_CAPS, and available points is capped
                         -- to what a character of that level would actually have
@@ -399,7 +403,15 @@ function TalentStage_BuildUI()
 				local edgeInset = TS.PANEL_BACKDROP.insets.left
 				bg:SetPoint("TOPLEFT", panel, "TOPLEFT", edgeInset, -edgeInset)
 				bg:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -edgeInset, edgeInset)
-				bg:SetTexture("Interface\\AddOns\\TalentStage\\Art\\TreeBG_"..engClass..".tga")
+				-- Some clients silently fail to load the full 1024x512 sheet
+				-- (confirmed: fails above 512x256, no error, just blank) --
+				-- SetUnitBlip only exists when VanillaHelpers.dll is loaded,
+				-- which is also confirmed to fix this, so its presence is
+				-- used as a proxy capability check to pick the safe fallback
+				-- sheet instead of guessing client identity/version.
+				-- TS.devTreeArtOverride (see the dev settings panel) forces a
+				-- tier for testing regardless of the real capability check.
+				bg:SetTexture("Interface\\AddOns\\TalentStage\\Art\\TreeBG_"..engClass..TalentStage_GetTreeArtTexSuffix()..".tga")
 
 				-- Cover-crop, not stretch: each class's slice is a fixed
 				-- 256x512px source image, but panels vary in aspect ratio per
@@ -1136,7 +1148,7 @@ function TalentStage_BuildSettings()
 
 	local panel = CreateFrame("Frame", "TalentStageSettingsPanel", UIParent)
 	panel:SetWidth(230)
-	panel:SetHeight(190)
+	panel:SetHeight(250)
 	panel:SetPoint("CENTER", UIParent, "CENTER", -260, 0)
 	panel:SetFrameStrata("DIALOG")
 	panel:SetToplevel(true)
@@ -1204,6 +1216,84 @@ function TalentStage_BuildSettings()
 	resetBtn:SetText("Reset sandbox talents")
 	resetBtn:SetScript("OnClick", TalentStage_ResetSandbox)
 	TS.sandboxResetButton = resetBtn
+
+	-- Tree art tier override: some clients silently fail to load the full
+	-- 1024x512 sheet (confirmed: fails above 512x256, no error, just blank --
+	-- see TalentStage_GetTreeArtTexSuffix for the SetUnitBlip capability
+	-- check this overrides). Session-only, never saved to
+	-- TalentStageOptionsDB, so it can't leak into a real player's settings.
+	local treeArtLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	treeArtLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD, -184)
+	treeArtLabel:SetTextColor(TS.COLOR.parchment[1], TS.COLOR.parchment[2], TS.COLOR.parchment[3])
+	treeArtLabel:SetText("Tree art tier (dev, session-only)")
+
+	local autoCheck = CreateFrame("CheckButton", "TalentStageTreeArtAutoCheck", panel, "UICheckButtonTemplate")
+	autoCheck:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD - 4, -202)
+	getglobal("TalentStageTreeArtAutoCheckText"):SetFontObject(GameFontHighlightSmall)
+	getglobal("TalentStageTreeArtAutoCheckText"):SetText("Auto (recommended)")
+	autoCheck:SetChecked(TS.devTreeArtOverride == nil)
+	autoCheck:SetScript("OnClick", TalentStage_ToggleTreeArtAuto)
+	TS.treeArtAutoCheck = autoCheck
+
+	local hdCheck = CreateFrame("CheckButton", "TalentStageTreeArtHDCheck", panel, "UICheckButtonTemplate")
+	hdCheck:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD - 4, -222)
+	getglobal("TalentStageTreeArtHDCheckText"):SetFontObject(GameFontHighlightSmall)
+	getglobal("TalentStageTreeArtHDCheckText"):SetText("Use high-def art")
+	hdCheck:SetChecked(TS.devTreeArtOverride == "full" or (TS.devTreeArtOverride == nil and SetUnitBlip and true or false))
+	hdCheck:SetScript("OnClick", TalentStage_ToggleTreeArtHD)
+	TS.treeArtHDCheck = hdCheck
+end
+
+-- Shared by the initial build (TalentStage_BuildUI) and the live dev-panel
+-- swap (TalentStage_ApplyTreeArtTier) so the two never disagree on which
+-- tier is actually in effect.
+function TalentStage_GetTreeArtTexSuffix()
+	if TS.devTreeArtOverride == "small" then
+		return "_Small"
+	elseif TS.devTreeArtOverride == "full" then
+		return ""
+	else
+		return SetUnitBlip and "" or "_Small"
+	end
+end
+
+-- Instant tier swap: SetTexture on the already-created bgTexture directly,
+-- same pattern as TalentStage_ApplyTreeArtSettings' alpha/show toggle --
+-- no frame rebuild needed since the crop/texcoord math is fraction-based
+-- and doesn't care about the texture's absolute pixel size.
+function TalentStage_ApplyTreeArtTier()
+	local _, engClass = UnitClass("player")
+	local texSuffix = TalentStage_GetTreeArtTexSuffix()
+	for _, panel in pairs(TS.panels) do
+		if panel.bgTexture then
+			panel.bgTexture:SetTexture("Interface\\AddOns\\TalentStage\\Art\\TreeBG_"..engClass..texSuffix..".tga")
+		end
+	end
+	-- SetTexture alone isn't trusted to preserve the alpha/show state on
+	-- every client (this is the exact bug that prompted this fix: swapping
+	-- tiers via SetTexture landed at very different apparent opacity) --
+	-- always reassert it explicitly right after swapping instead of hoping.
+	TalentStage_ApplyTreeArtSettings()
+end
+
+function TalentStage_ToggleTreeArtAuto()
+	if this:GetChecked() then
+		TS.devTreeArtOverride = nil
+		-- reflect what auto actually resolved to, so the HD box shows the
+		-- real state instead of whatever it was last manually set to
+		TS.treeArtHDCheck:SetChecked(SetUnitBlip and true or false)
+	else
+		-- unchecking Auto with no explicit tier chosen yet: keep whatever's
+		-- currently in effect as the starting point for manual A/B'ing
+		TS.devTreeArtOverride = SetUnitBlip and "full" or "small"
+	end
+	TalentStage_ApplyTreeArtTier()
+end
+
+function TalentStage_ToggleTreeArtHD()
+	TS.treeArtAutoCheck:SetChecked(false)
+	TS.devTreeArtOverride = this:GetChecked() and "full" or "small"
+	TalentStage_ApplyTreeArtTier()
 end
 
 function TalentStage_ToggleSettingsPanel()
@@ -2742,7 +2832,5 @@ SlashCmdList["TALENTSTAGE"] = function(msg)
 		TS.connectorTestFrame:Show()
 	elseif msg == "dev" then
 		TalentStage_ToggleSettingsPanel()
-	else
-		DEFAULT_CHAT_FRAME:AddMessage("TalentStage: /ts dump - dump live GetTalentInfo/GetTalentPrereqs data to a copy box and SavedVariables. /ts testconnectors - show a synthetic diagonal-connector test panel. /ts dev - toggle the dev sandbox-mode panel.")
 	end
 end

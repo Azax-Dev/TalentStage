@@ -69,6 +69,15 @@ particular server's talent layout, tiers, columns, or prerequisites, so it
 should work unmodified against any server running a stock-shaped 1.12
 talent API, including servers that have customized their talent trees.
 
+**Tree background art:** some 1.12 client builds can't load the full-detail
+background art and Talent Stage automatically falls back to a lower-quality
+version on those clients — no action needed, everything else about the addon
+is unaffected. If you'd like the full-detail art, install `VanillaHelpers.dll`
+(a common community client patch — search for it if you don't already have
+it), add it to your client's `dlls.txt` (create the file next to your
+`WoW.exe` if it doesn't exist, add a line with just `VanillaHelpers.dll`),
+and it'll pick up automatically next login.
+
 ## Credits
 
 - Talent Stage is written and maintained by **Azax**.
